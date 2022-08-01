@@ -2526,11 +2526,13 @@ void compute_observer_position(double &x, double &y, double &z, double w, double
     cw = cos(w);
     sw = sin(w);
     //compute the roation vector (perpendicular to k and u)
+    std::cout <<"u "<<ux<<" "<<uy<<" "<<uz;
+    std::cout <<"k "<<kx<<" "<<ky<<" "<<kz;
     cross_product(rotx, roty, rotz, ux, uy, uz, kx, ky, kz);
+    //std::cout <<"rot "<<rotx<<" "<<roty<<" "<<rotz<<std::endl;
     rotx /= sqrt(rotx*rotx + roty*roty + rotz*rotz);
     roty /= sqrt(rotx*rotx + roty*roty + rotz*rotz);
     rotz /= sqrt(rotx*rotx + roty*roty + rotz*rotz);
-
     //compute the rotation matrix
     Mxx = cw + rotx*rotx*(1. - cw) ; Mxy = rotx*roty*(1. - cw) - rotz*sw ; Mxz = rotx*rotz*(1. - cw) + roty*sw ;
     Myx = roty*rotx*(1. - cw) + rotz*sw ; Myy = cw + roty*roty*(1. - cw) ; Myz = roty*rotz*(1. - cw) - rotx*sw ;
@@ -2580,10 +2582,14 @@ double Cerenkov_dichotomie(double w_start, double eta, double kx, double ky, dou
     while(res < 0){
 
         //Compute the test position
+	//std::cout.precision(17);
+        //std::cout<<"Inputs"<<" "<<w_test<<" "<<kx<<" "<<ky<<" "<<kz<<" "<<ux<<" "<<uy<<" "<<0<<" "<<x_Xmax<<" "<<y_Xmax<<" "<<z_Xmax<<" "<<GroundAltitude << std::endl;
         compute_observer_position( x,  y,  z,  w_test,  kx,  ky,  kz,  ux,  uy, 0, x_Xmax,  y_Xmax,  z_Xmax,  GroundAltitude);
+	//std::cout<<"Observer position "<<x<<" "<<y<<" "<<z<<" "<<std::endl;
         n0 = _ZHSEffectiveRefractionIndex(x_Xmax, y_Xmax, z_Xmax, x, y, z, 325.0, -0.1218); //to checks here !!
         n1 = _ZHSEffectiveRefractionIndex(x_Before, y_Before, z_Before, x, y, z, 325.0, -0.1218); //to checks here !!
         res = master_equation(w_test, XmaxDist, delta, alpha, n0, n1);
+	//std::cout<<"Master equation "<<w_test<<" "<<XmaxDist<<" "<<delta<<" "<<alpha<<" "<<n0<<" "<<n1<<" "<< res << std::endl;
         w_test += w_step;
         it++;
         if (it > 500){ //300 iteration -> angle > 2.8° largely above expected Cerenkov angle

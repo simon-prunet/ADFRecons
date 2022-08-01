@@ -9,7 +9,7 @@ ifeq ($(UNAME_S),Linux)
     LIBS += -lgfortran
 endif
 ifeq ($(UNAME_S),Darwin)
-    LIBS += -L/usr/local/gfortran/lib/ -lgfortran
+    LIBS += -L/usr/local/Cellar/gcc/11.3.0_2/lib/gcc/11/ -lgfortran
 endif
 
 
