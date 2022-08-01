@@ -120,7 +120,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
         res = minor_equation(omega,n0,n1)
 
-
+    @njit
     def compute_observer_position(omega):
         '''
         Given angle between shower direction (K) and line joining Xmax and observer's position,
@@ -139,6 +139,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         X = Xmax + t*Dir_obs
         return (X)
 
+    @njit
     def minor_equation(omega, n0, n1):
 
         '''
@@ -166,6 +167,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: 
 
+@njit
 def PWF_loss(Xants, tants, theta, phi, cr=1.0):
     '''
     Defines Chi2 by summing model residuals
