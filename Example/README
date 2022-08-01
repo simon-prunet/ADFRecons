@@ -1,0 +1,10 @@
+To be able to run the code on this example, 
+
+cd Example
+ln -s ../TREND/Rec_coinctable_example.txt Rec_coinctable.txt
+ln -s ../TREND/coord_antennas_example.txt coord_antennas.txt
+
+And then, 
+../bin/recons [0-2] .
+
+
