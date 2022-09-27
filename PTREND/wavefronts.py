@@ -184,7 +184,7 @@ def PWF_loss(Xants, tants, theta, phi, cr=1.0):
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
     # Make sure tants and Xants are compatible
-    if (Xants.shape[1] != nants):
+    if (Xants.shape[0] != nants):
         print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
         return None
     tmp = 0.
@@ -194,4 +194,36 @@ def PWF_loss(Xants, tants, theta, phi, cr=1.0):
             tmp += res*res
     chi2 = 0.5*tmp
     return (chi2)
+
+
+def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
+
+    '''
+    Defines Chi2 by summing model residuals over antennas  (i):
+    loss = \sum_i ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
+    where:
+    Xants are the antenna positions (shape=(nants,3))
+    tants are the trigger times (shape=(nants,))
+    x_s = \sin(\theta)\cos(\phi)
+    y_s = \sin(\theta)\sin(\phi)
+    z_s = \cos(\theta)
+    \theta, \phi are the spherical coordinates of the vector K
+    t_s is the source emission time
+    cr is the radiation speed in medium (c/n)
+    '''
+
+    nants = shape(tants)
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    # Make sure Xants and tants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
+        return None
+    tmp = 0.
+    for i in range(nants):
+        res = cr*(tants[i]-t_s) - np.sqrt( (Xants[i,0]-r_xmax*K[0])**2 + (Xants[i,1]-r_xmax*K[1])**2 + (Xants[i,2]-r_xmax*K[2])**2 )
+        tmp += res*res
+
+    chi2 = 0.5*tmp
+    return(chi2)
 
