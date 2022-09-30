@@ -6,6 +6,11 @@ from scipy.optimize import fsolve
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
+groundAltitude = 1086.0
+B_dec = 0.
+B_inc = np.pi/2. + 1.0609856522873529
+# Magnetic field direction (unit) vector
+Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_inc),np.cos(B_inc)])
 
 # Simple numba example
 @njit
@@ -89,7 +94,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     Solve for Cerenkov angle by minimizing
     time delay between light rays originating from Xb and Xmax and arriving
     at observer's position. 
-    eta:   azimuth in horizontal plane of observer's position, with respect to shower plane
+    eta:   azimuth of observer's position in shower plane coordinates 
     K:     direction vector of shower
     Xmax:  coordinates of Xmax point
     delta: distance between Xmax and Xb points
@@ -149,6 +154,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         sa = np.sin(alpha)
         saw = np.sin(alpha+omega) # Note the difference with Valentin Decoene's code... To be confirmed.
         com = np.cos(omega)
+        # Eq. 3.38 p125.
         res = Lx*Lx * sa*sa *(n0*n0-n1*n1) + 2*Lx*sa*saw*delta*(n0-n1*n1*com) + delta*delta*(1.-n1*n1)*saw*saw
 
         return(res)
@@ -172,15 +178,15 @@ def PWF_loss(Xants, tants, theta, phi, cr=1.0):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
-    loss = \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
+    loss = 0.5 \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
     where:
     Xants are the antenna positions (shape=(nants,3))
     tants are the antenna arrival times of the wavefront (trigger time, shape=(nants,))
     theta, phi: spherical coordinates of unit shower direction vector K
-    cr is radiation speed in medium (c/n)
+    cr is radiation speed, by default 1 since time is expressed in m.
     '''
 
-    nants = shape(tants)
+    nants = shape(tants)[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
     # Make sure tants and Xants are compatible
@@ -200,7 +206,7 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
-    loss = \sum_i ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
+    loss = 0.5 \sum_i ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
     where:
     Xants are the antenna positions (shape=(nants,3))
     tants are the trigger times (shape=(nants,))
@@ -209,21 +215,64 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
     z_s = \cos(\theta)
     \theta, \phi are the spherical coordinates of the vector K
     t_s is the source emission time
-    cr is the radiation speed in medium (c/n)
+    cr is the radiation speed in medium, by default 1 since time is expressed in m.
     '''
 
-    nants = shape(tants)
+    nants = shape(tants)[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+
     # Make sure Xants and tants are compatible
     if (Xants.shape[0] != nants):
         print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
         return None
     tmp = 0.
     for i in range(nants):
-        res = cr*(tants[i]-t_s) - np.sqrt( (Xants[i,0]-r_xmax*K[0])**2 + (Xants[i,1]-r_xmax*K[1])**2 + (Xants[i,2]-r_xmax*K[2])**2 )
+        # Compute average refraction index between emission and observer
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        dX = Xants[i,:] - Xmax
+        # Spherical wave front
+        res = cr*(tants[i]-t_s) - n_average*np.linalg.norm(dX)
         tmp += res*res
 
     chi2 = 0.5*tmp
     return(chi2)
+
+def ADF_loss(Aants, theta, phi, delta_omega, r_xmax):
+    
+    '''
+
+    Defines Chi2 by summing *amplitude* model residuals over antennas (i):
+    loss = \sum_i (A_i - f_i^{ADF}(\theta,\phi,\delta\omega,A,r_xmax))**2
+    where the ADF function reads:
+    
+    f_i = f_i(\omega_i, \eta_i, \alpha, l_i, \delta_omega, A)
+        = A/l_i f_geom(\alpha, \eta_i) f_Cerenkov(\omega,\delta_\omega)
+    
+    where 
+    
+    f_geom(\alpha, \eta_i) = (1 + B \sin(\alpha))**2 \cos(\eta_i) # B is here the geomagnetic asymmetry
+    f_Cerenkov(\omega_i,\delta_\omega) = 1 / (1+4{ (\tan(\omega_i)/\tan(\omega_c))**2 - 1 ) / \delta_\omega }**2 )
+    
+    Input parameters are: \theta, \phi define the shower direction angles, \delta_\omega the width of the Cerenkov ring, 
+    A is the amplitude paramter, r_xmax is the norm of the position vector at Xmax.
+
+    Derived parameters are: 
+    \alpha, angle between the shower axis and the magnetic field
+    \eta_i is the azimuthal angle of the (projection of the) antenna position in shower plane
+    \omega_i is the angle between the shower axis and the vector going from Xmax to the antenna position
+
+    '''
+
+    nants = Aants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    # Define shower basis vectors
+    K = np.array([st*cp,st*sp,ct])
+    KxB = np.cross(K,B); KxB /= np.linalg.norm(KxB)
+    KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
+    # 
+    ### XmaxDist = (groundAltitude-)
+    ### TBC
+
 
