@@ -239,7 +239,7 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
     chi2 = 0.5*tmp
     return(chi2)
 
-def ADF_loss(Aants, theta, phi, delta_omega, r_xmax):
+def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, r_xmax, asym_coeff=0.01):
     
     '''
 
@@ -269,10 +269,14 @@ def ADF_loss(Aants, theta, phi, delta_omega, r_xmax):
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     # Define shower basis vectors
     K = np.array([st*cp,st*sp,ct])
-    KxB = np.cross(K,B); KxB /= np.linalg.norm(KxB)
+    KxB = np.cross(K,Bvec); KxB /= np.linalg.norm(KxB)
     KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
     # 
-    ### XmaxDist = (groundAltitude-)
+    XmaxDist = (groundAltitude-Xmax[2])/K[2]
+    asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\eta)
     ### TBC
+
+
+    
 
 
