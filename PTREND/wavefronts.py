@@ -178,7 +178,7 @@ def PWF_loss(Xants, tants, theta, phi, cr=1.0):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
-    loss = 0.5 \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
+    loss = \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
     where:
     Xants are the antenna positions (shape=(nants,3))
     tants are the antenna arrival times of the wavefront (trigger time, shape=(nants,))
@@ -198,7 +198,7 @@ def PWF_loss(Xants, tants, theta, phi, cr=1.0):
         for i in range(j+1,nants):
             res = np.dot(Xants[j,:]-Xants[i,:],K)-cr*(tants[j]-tants[i])
             tmp += res*res
-    chi2 = 0.5*tmp
+    chi2 = tmp
     return (chi2)
 
 
@@ -206,7 +206,7 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
-    loss = 0.5 \sum_i ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
+    loss = \sum_i ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
     where:
     Xants are the antenna positions (shape=(nants,3))
     tants are the trigger times (shape=(nants,))
@@ -236,10 +236,10 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
         res = cr*(tants[i]-t_s) - n_average*np.linalg.norm(dX)
         tmp += res*res
 
-    chi2 = 0.5*tmp
+    chi2 = tmp
     return(chi2)
 
-def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, r_xmax, asym_coeff=0.01):
+def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, amplitude, asym_coeff=0.01):
     
     '''
 
@@ -269,14 +269,49 @@ def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, r_xmax, asym_coeff=0.0
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     # Define shower basis vectors
     K = np.array([st*cp,st*sp,ct])
+    K_plan = np.array([K[0],K[1]])
     KxB = np.cross(K,Bvec); KxB /= np.linalg.norm(KxB)
     KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
+    # Coordinate transform matrix
+    mat = np.vstack([KxB,KxKxB,K])
     # 
     XmaxDist = (groundAltitude-Xmax[2])/K[2]
     asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\eta)
-    ### TBC
+    #
+    # Make sure Xants and tants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
+        return None
+
+    # Loop on antennas
+    for i in range(nants):
+        # Antenna position from Xmax
+        dX = Xants[i,:]-Xmax
+        # Expressed in shower frame coordinates
+        dX_sp = np.dot(mat,dX)
+        #
+        l_ant = np.linalg.norm(dX)
+        eta = np.arctan2(dX_sp[1],dX_sp[0])
+        omega = np.arccos(np.dot(K,dX)/l_ant)
+        # vector in the plane defined by K and dX, projected onto 
+        # horizontal plane
+        val_plan = np.array([dX[0]/l_ant - K[0]], dX[1]/l_ant - K[1])
+        # Angle between k_plan and val_plan
+        xi = np.arccos(np.dot(k_plan,val_plan)
+                       /np.linalg.norm(k_plan)
+                       /np.linalg.norm(val_plan))
+        omega_cr = compute_Cerenkov(xi,K,xmaxDist,Xmax,2.0e3,groundAltitude)
+        # Distribution width. Here rescaled by ratio of cosines (why ?)
+        width = ct / (dX[2]/l_ant) * delta_omega
+        # Distribution
+        adf = amplitude/l_ant / (1.+4.*( (np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2
+        adf *= 1. + asym*np.cos(eta) # 
+        # Chi2
+        tmp += (Aants[i]-adf)**2
+
+    chi2 = tmp
+    return(chi2)
 
 
-    
 
 
