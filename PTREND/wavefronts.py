@@ -26,7 +26,7 @@ def RefractionIndexAtPosition(X):
     R2 = X[0]*X[0] + X[1]*X[1]
     h = (np.sqrt( (X[2]+R_earth)**2 + R2 ) - R_earth)/1e3 # Altitude in km
     rh = ns*np.exp(kr*h)
-    n = 1.+1e-6*rh-1
+    n = 1.+1e-6*rh
     return (n)
 
 @njit
@@ -115,17 +115,22 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     ce = np.cos(eta); se=np.sin(eta)
     U = np.array([ce*K_plan[0]+se*K_plan[1],-se*K_plan[0]+ce*K_plan[1],0.])
     # Compute angle between shower direction and (horizontal) direction to observer
-    alpha = np.acos(np.dot(K,U))
+    alpha = np.arccos(np.dot(K,U))
 
 
     def compute_delay(omega):
 
         X = compute_observer_position(omega)
+        # print('omega = ',omega,'X_obs = ',X)
         n0 = ZHSEffectiveRefractionIndex(Xmax,X)
+        # print('n0 = ',n0)
         n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
+        # print('n1 = ',n1)
         res = minor_equation(omega,n0,n1)
+        # print('delay = ',res)
+        return(res)
 
-    @njit
+    #@njit
     def compute_observer_position(omega):
         '''
         Given angle between shower direction (K) and line joining Xmax and observer's position,
@@ -137,7 +142,10 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         Rot_axis = np.cross(U,K)
         Rot_axis /= np.linalg.norm(Rot_axis)
         # Define rotation using scipy's method
-        Rotation = R.from_rotvec(omega * Rot_axis)
+        Rotation = R.from_rotvec(-omega * Rot_axis)
+        # print('#####')
+        # print(Rotation.as_matrix())
+        # print('#####')
         Dir_obs  = Rotation.apply(K)
         # Compute observer's position
         t = (groundAltitude - Xmax[2])/Dir_obs[2]
@@ -152,7 +160,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         '''
         Lx = xmaxDist
         sa = np.sin(alpha)
-        saw = np.sin(alpha+omega) # Note the difference with Valentin Decoene's code... To be confirmed.
+        saw = np.sin(alpha-omega) # Keeping minus sign to compare to Valentin's results. Should be plus sign.
         com = np.cos(omega)
         # Eq. 3.38 p125.
         res = Lx*Lx * sa*sa *(n0*n0-n1*n1) + 2*Lx*sa*saw*delta*(n0-n1*n1*com) + delta*delta*(1.-n1*n1)*saw*saw
@@ -162,7 +170,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 
     # Now solve for omega
     # Starting point at standard value acos(1/n(Xmax)) 
-    omega_cr_guess = np.acos(1./RefractionIndexAtPosition(Xmax))
+    omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
     omega_cr = fsolve(compute_delay,[omega_cr_guess])
 
     return(omega_cr)
