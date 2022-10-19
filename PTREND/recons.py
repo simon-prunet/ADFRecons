@@ -15,7 +15,7 @@ class antenna_set:
         self.indices = np.loadtxt(self.position_input_file, usecols=(0,), dtype=int)
         self.coordinates = np.loadtxt(self.position_input_file, usecols = (1,2,3))
         self.init_ant = np.min(self.indices)
-        self.nants = np.size(indices)
+        self.nants = np.size(self.indices)
         return
 
 class coincidence_set:
@@ -37,21 +37,28 @@ class coincidence_set:
         coinc_indices = np.unique(coinc_index_array)
         ncoincs = len(coinc_indices)
 
+        # Store number of antennas per coincidence event
+        self.nants = np.zeros(ncoincs,dtype='int')
+
         # Filter out coincidences with small number of antennas
+        # A bit of complexity here since the number of antennas involved per coincidence event
+        # will vary, so we need to keep track of the number of antennas per event.
         self.ncoincs = 0
+        self.nantsmax = 0
         for index in coinc_indices:
             current_mask = (coinc_index_array==index)
             current_length = np.sum(current_mask)
             if current_length>3:
-                self.nants = current_length
+                self.nants[self.ncoincs] = current_length
+                self.nantsmax = np.maximum(self.nantsmax, current_length)
                 self.ncoincs += 1
 
         print(self.nants,self.ncoincs)
         # Now create the structure and populate it
-        self.antenna_index_array = np.zeros((self.ncoincs,self.nants),dtype='int')
-        self.coinc_index_array   = np.zeros((self.ncoincs,self.nants),dtype='int')
-        self.peak_time_array     = np.zeros((self.ncoincs,self.nants))
-        self.peak_amp_array      = np.zeros((self.ncoincs,self.nants))
+        self.antenna_index_array = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
+        self.coinc_index_array   = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
+        self.peak_time_array     = np.zeros((self.ncoincs,self.nantsmax))
+        self.peak_amp_array      = np.zeros((self.ncoincs,self.nantsmax))
         # Filter and read
         current_coinc = 0
         for index in coinc_indices:
@@ -59,14 +66,45 @@ class coincidence_set:
             print (mask)
             current_length = np.sum(mask)
             if current_length>3:
-                self.antenna_index_array[current_coinc,:] = antenna_index_array[mask]
-                self.coinc_index_array[current_coinc,:] = coinc_index_array[mask]
-                self.peak_time_array[current_coinc,:] = peak_time_array[mask]
-                self.peak_amp_array[current_coinc,:] = peak_amp_array[mask]
+                # Next line assumes that the antenna coordinate files gives all antennas in order, starting from antenna number=init_ant
+                # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
+                self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.init_ant
+                # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
+                self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
+                self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
+                self.peak_amp_array[current_coinc,:self.nants[current_coinc]] = peak_amp_array[mask]
                 current_coinc += 1
         return
 
-def 
+class setup:
+
+    def __init__(self, data_dir,recons_type):
+
+        self.recons_type = recons_type
+        self.data_dir    = data_dir
+        if (self.recons_type<0 or self.recons_type>2):
+            print("Choose reconstruction type values in :")
+            print("0: plane wave reconstruction")
+            print("1: spherical wave reconstruction")
+            print("2: ADF model reconstruction")
+            print("Other values not supported.")
+            return
+        if (not os.path.exists(self.data_dir)):
+            print("Data directory %s does not seem to exist."%self.data_dir)
+            return
+        # Prepare output files
+        if (self.recons_type==0):
+            self.outfile = self.data_dir+'/Rec_plane_wave_recons.txt'
+        elif (self.recons_type==1):
+            self.outfile = self.data_dir+'/Rec_sphere_wave_recons.txt'
+        elif (self.recons_type==2):
+            self.outfile = self.data_dir+'/Rec_adf_recons.txt'
+
+        # Prepare input files, depending on reconstruction type
+        if (self.recons_type==1 or self.recons_type==2):
+            self.input_angles_file = self.data_dir+'/Rec_plane_wave_recons.txt'
+        if (self.recons_type==2):
+            self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons.txt'
 
 
 
@@ -89,7 +127,7 @@ def main():
     # Read coincidences (antenna index, coincidence index, peak time, peak amplitude)
     # Routine only keep valid number of antennas (>3)
     co = coincidence_set(data_dir+'/Rec_coinctable.txt')
-    
+
 
 
     return
