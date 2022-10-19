@@ -20,13 +20,20 @@ class antenna_set:
 
 class coincidence_set:
 
-    def __init__(self, coinc_table_file):
+    def __init__(self, coinc_table_file, antenna_set_instance):
 
         if (not os.path.exists(coinc_table_file)):
             print("Coincidence table file %s does not exist"%coinc_table_file)
             return
 
         self.coinc_table_file = coinc_table_file
+        # This assumes an antenna_set instance has been created first
+        if (not isinstance(antenna_set_instance,antenna_set)):
+            print("Usage: co = coincidence_set(coinc_table_file,antenna_set_instance)")
+            print("where coinc_table_file is a coincidence table file, and")
+            print("antenna_set_instance is an instance of the class antenna_set")
+            return
+        self.ant_set = antenna_set_instance
         print(" Reading coincidence(s): index, peak time, peak amplitude from file %s"%self.coinc_table_file)
         tmp = np.loadtxt(self.coinc_table_file,dtype='int',usecols=(0,1))
         antenna_index_array = tmp[:,0]
@@ -56,9 +63,11 @@ class coincidence_set:
         print(self.nants,self.ncoincs)
         # Now create the structure and populate it
         self.antenna_index_array = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
+        self.antenna_coords_array= np.zeros((self.ncoincs,self.nantsmax,3))
         self.coinc_index_array   = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
         self.peak_time_array     = np.zeros((self.ncoincs,self.nantsmax))
         self.peak_amp_array      = np.zeros((self.ncoincs,self.nantsmax))
+
         # Filter and read
         current_coinc = 0
         for index in coinc_indices:
@@ -68,7 +77,8 @@ class coincidence_set:
             if current_length>3:
                 # Next line assumes that the antenna coordinate files gives all antennas in order, starting from antenna number=init_ant
                 # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
-                self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.init_ant
+                self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.ant_set.init_ant
+                self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[self.antenna_index_array[current_coinc,:self.nants[current_coinc]]]
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
