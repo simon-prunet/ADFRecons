@@ -312,7 +312,7 @@ def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, amplitude, asym_coeff=
         # Distribution width. Here rescaled by ratio of cosines (why ?)
         width = ct / (dX[2]/l_ant) * delta_omega
         # Distribution
-        adf = amplitude/l_ant / (1.+4.*( (np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2
+        adf = amplitude/l_ant / (1.+4.*( ((np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2)
         adf *= 1. + asym*np.cos(eta) # 
         # Chi2
         tmp += (Aants[i]-adf)**2
