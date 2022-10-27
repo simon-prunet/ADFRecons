@@ -116,7 +116,30 @@ class setup:
         if (self.recons_type==2):
             self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons.txt'
 
+    def read_angles(self,read_coinc_index=True):
 
+        # Read theta,phi results of plane wave fit. Only makes sense if recons=0 has been run first.
+        fid = open(self.input_angles_file,'r')
+        l = fid.readline().strip().split()
+        self.theta_rec = float(l[2])
+        self.phi_rec   = float(l[4])
+        if (read_coinc_index):
+            self.coinc_index_rec_plane = int(l[0])
+        fid.close()
+        return
+
+    def read_xmax(self,read_coinc_index=True):
+
+        # Read xmax,ymax,zmax results of spherical wave fit. Only makes sense if recons=1 has been run first.
+        fid = open(self.input_xmax_file)
+        l = fid.readline().strip().split()
+        self.xmax = float(l[3])
+        self.ymax = float(l[4])
+        self.zmax = float(l[5])
+        if (read_coinc_index):
+            self.coinc_index_rec_sphere = int(l[0])
+        fid.close()
+        return
 
 def main():
 
