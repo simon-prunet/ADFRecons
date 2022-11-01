@@ -1,7 +1,9 @@
 import numpy as np
-#import wavefronts as wa
+from wavefronts import *
 import sys
 import os
+import scipy.optimize as so
+c_light = 2.997924580e8
 
 class antenna_set:
 
@@ -39,7 +41,7 @@ class coincidence_set:
         antenna_index_array = tmp[:,0]
         coinc_index_array   = tmp[:,1]
         tmp2 = np.loadtxt(self.coinc_table_file,usecols=(2,3)) # floats
-        peak_time_array = tmp2[:,0]
+        peak_time_array = tmp2[:,0]*c_light
         peak_amp_array  = tmp2[:,1]
         coinc_indices = np.unique(coinc_index_array)
         ncoincs = len(coinc_indices)
@@ -82,6 +84,7 @@ class coincidence_set:
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
+                self.peak_time_array[current_coinc,:self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc,:self.nants[current_coinc]])
                 self.peak_amp_array[current_coinc,:self.nants[current_coinc]] = peak_amp_array[mask]
                 current_coinc += 1
         return
@@ -149,7 +152,7 @@ def main():
         print ("data_dir is the directory containing the coincidence files")
         sys.exit(1)
 
-    recons_type = sys.argv[1]
+    recons_type = int(sys.argv[1])
     data_dir = sys.argv[2]
 
     print('recons_type = ',recons_type)
@@ -159,7 +162,17 @@ def main():
     an = antenna_set(data_dir+'/coord_antennas.txt')
     # Read coincidences (antenna index, coincidence index, peak time, peak amplitude)
     # Routine only keep valid number of antennas (>3)
-    co = coincidence_set(data_dir+'/Rec_coinctable.txt')
+    co = coincidence_set(data_dir+'/Rec_coinctable.txt',an)
+
+    # Initialize reconstruction
+    st = setup(data_dir,recons_type)
+
+    if (st.recons_type==0):
+        for current_recons in range(co.ncoincs):
+            params_in = [np.pi,np.pi]
+            res = so.minimize(PWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:]),
+                method='L-BFGS-B', bounds=[[0.,np.pi],[0.,2*np.pi]])
+            print(res)
 
 
 
