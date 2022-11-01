@@ -181,20 +181,21 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: 
 
-@njit
-def PWF_loss(Xants, tants, theta, phi, cr=1.0):
+#@njit
+def PWF_loss(params, Xants, tants, cr=1.0):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
     loss = \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
     where:
+    params=(theta, phi): spherical coordinates of unit shower direction vector K
     Xants are the antenna positions (shape=(nants,3))
     tants are the antenna arrival times of the wavefront (trigger time, shape=(nants,))
-    theta, phi: spherical coordinates of unit shower direction vector K
     cr is radiation speed, by default 1 since time is expressed in m.
     '''
 
-    nants = shape(tants)[0]
+    theta,phi = params
+    nants = tants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
     # Make sure tants and Xants are compatible
@@ -202,15 +203,16 @@ def PWF_loss(Xants, tants, theta, phi, cr=1.0):
         print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
         return None
     tmp = 0.
-    for j in range(nants):
+    for j in range(nants-1):
         for i in range(j+1,nants):
             res = np.dot(Xants[j,:]-Xants[i,:],K)-cr*(tants[j]-tants[i])
             tmp += res*res
     chi2 = tmp
+    print(chi2)
     return (chi2)
 
 
-def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
+def SWF_loss(params, Xants, tants, cr=1.0):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
@@ -221,12 +223,15 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
     x_s = \sin(\theta)\cos(\phi)
     y_s = \sin(\theta)\sin(\phi)
     z_s = \cos(\theta)
+
+    Inputs: params = theta, phi, r_xmax, t_s
     \theta, \phi are the spherical coordinates of the vector K
     t_s is the source emission time
     cr is the radiation speed in medium, by default 1 since time is expressed in m.
     '''
 
-    nants = shape(tants)[0]
+    params = theta, phi, r_xmax, t_s
+    nants = tants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
     Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
@@ -247,7 +252,7 @@ def SWF_loss(Xants, tants, theta, phi, r_xmax, t_s, cr=1.0):
     chi2 = tmp
     return(chi2)
 
-def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, amplitude, asym_coeff=0.01):
+def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
     
     '''
 
@@ -263,8 +268,9 @@ def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, amplitude, asym_coeff=
     f_geom(\alpha, \eta_i) = (1 + B \sin(\alpha))**2 \cos(\eta_i) # B is here the geomagnetic asymmetry
     f_Cerenkov(\omega_i,\delta_\omega) = 1 / (1+4{ (\tan(\omega_i)/\tan(\omega_c))**2 - 1 ) / \delta_\omega }**2 )
     
-    Input parameters are: \theta, \phi define the shower direction angles, \delta_\omega the width of the Cerenkov ring, 
-    A is the amplitude paramter, r_xmax is the norm of the position vector at Xmax.
+    Input parameters are: params = theta, phi, delta_omega, amplitude
+    \theta, \phi define the shower direction angles, \delta_\omega the width of the Cerenkov ring, 
+    A is the amplitude paramater, r_xmax is the norm of the position vector at Xmax.
 
     Derived parameters are: 
     \alpha, angle between the shower axis and the magnetic field
@@ -273,6 +279,7 @@ def ADF_loss(Aants, Xants, Xmax, theta, phi, delta_omega, amplitude, asym_coeff=
 
     '''
 
+    params = theta, phi, delta_omega, amplitude
     nants = Aants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     # Define shower basis vectors
