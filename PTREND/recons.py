@@ -3,6 +3,7 @@ from wavefronts import *
 import sys
 import os
 import scipy.optimize as so
+import numdifftools as nd
 c_light = 2.997924580e8
 
 class antenna_set:
@@ -107,17 +108,20 @@ class setup:
             return
         # Prepare output files
         if (self.recons_type==0):
-            self.outfile = self.data_dir+'/Rec_plane_wave_recons.txt'
+            self.outfile = self.data_dir+'/Rec_plane_wave_recons_py.txt'
+            if os.path.exists(self.outfile):
+                # Remove previous files
+                os.remove(self.outfile)
         elif (self.recons_type==1):
-            self.outfile = self.data_dir+'/Rec_sphere_wave_recons.txt'
+            self.outfile = self.data_dir+'/Rec_sphere_wave_recons_py.txt'
         elif (self.recons_type==2):
-            self.outfile = self.data_dir+'/Rec_adf_recons.txt'
+            self.outfile = self.data_dir+'/Rec_adf_recons_py.txt'
 
         # Prepare input files, depending on reconstruction type
         if (self.recons_type==1 or self.recons_type==2):
-            self.input_angles_file = self.data_dir+'/Rec_plane_wave_recons.txt'
+            self.input_angles_file = self.data_dir+'/Rec_plane_wave_recons_py.txt'
         if (self.recons_type==2):
-            self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons.txt'
+            self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons_py.txt'
 
     def read_angles(self,read_coinc_index=True):
 
@@ -144,6 +148,12 @@ class setup:
         fid.close()
         return
 
+    def write_angles(self,outfile,coinc,nants,angles,errors,chi2):
+
+        fid = open(outfile,'a')
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.8le %12.5le %12.5le \n"%(coinc,nants,angles[0],errors[0],angles[1],errors[1],chi2,np.nan))
+        fid.close()
+
 def main():
 
     if (len(sys.argv) != 3):
@@ -163,16 +173,27 @@ def main():
     # Read coincidences (antenna index, coincidence index, peak time, peak amplitude)
     # Routine only keep valid number of antennas (>3)
     co = coincidence_set(data_dir+'/Rec_coinctable.txt',an)
-
+    print("Number of coincidences = ",co.ncoincs)
     # Initialize reconstruction
     st = setup(data_dir,recons_type)
 
     if (st.recons_type==0):
         for current_recons in range(co.ncoincs):
             params_in = [np.pi,np.pi]
-            res = so.minimize(PWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:]),
+            res = so.minimize(PWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
                 method='L-BFGS-B', bounds=[[0.,np.pi],[0.,2*np.pi]])
-            print(res)
+            params_out = res.x
+            # compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
+            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            hess = nd.Hessian(PWF_loss) (params_out,*args)
+            errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            print ("Best fit parameters = ",np.rad2deg(params_out))
+            print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
+            print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
+            print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
+            st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
+                np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args))
+            #print(co.coinc_index_array[current_recons,0],co.nants[current_recons],np.rad2deg(res.x[0]),)
 
 
 
