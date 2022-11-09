@@ -213,7 +213,7 @@ def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 
 
-def SWF_loss(params, Xants, tants, cr=1.0):
+def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
@@ -231,7 +231,8 @@ def SWF_loss(params, Xants, tants, cr=1.0):
     cr is the radiation speed in medium, by default 1 since time is expressed in m.
     '''
 
-    params = theta, phi, r_xmax, t_s
+    theta, phi, r_xmax, t_s = params
+    print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
     nants = tants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
@@ -251,6 +252,8 @@ def SWF_loss(params, Xants, tants, cr=1.0):
         tmp += res*res
 
     chi2 = tmp
+    if (verbose):
+        print ("Chi2 = ",chi2)
     return(chi2)
 
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
