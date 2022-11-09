@@ -178,6 +178,7 @@ def main():
     st = setup(data_dir,recons_type)
 
     if (st.recons_type==0):
+        # PWF model. We do not assume any prior analysis was done.
         for current_recons in range(co.ncoincs):
             params_in = [np.pi,np.pi]
             res = so.minimize(PWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
@@ -191,11 +192,29 @@ def main():
             print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
             print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
             print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
+            # Write down results to file
             st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
                 np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args))
-            #print(co.coinc_index_array[current_recons,0],co.nants[current_recons],np.rad2deg(res.x[0]),)
 
-
+    if (st.recons_type==1):
+        # SWF model. We assume that PWF reconstrution was run first. Check if corresponding result file exists.
+        if not os.path.exists(st.input_angles_file):
+            print("SWF reconstruction was requested, while input angles file %s does not exists."%co.input_angles_file)
+            return
+        fid_input_angles = open(st.input_angles_file,'r')
+        for current_recons in range(co.ncoincs):
+            # Read angles obtained with PWF reconstruction
+            l = fid_input_angles.readline().strip().split()
+            theta_in = float(l[2])
+            phi_in   = float(l[4])
+            bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
+                      [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)], 
+                      [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
+                      [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+            params_in = np.array(bounds).mean(axis=1)
+            res = so.minimize(SWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
+                method='L-BFGS-B',bounds=bounds)
+            print (res.x)
 
     return
 
