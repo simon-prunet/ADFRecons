@@ -182,7 +182,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # ADF: 
 
 #@njit
-def PWF_loss(params, Xants, tants, cr=1.0):
+def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
@@ -208,7 +208,8 @@ def PWF_loss(params, Xants, tants, cr=1.0):
             res = np.dot(Xants[j,:]-Xants[i,:],K)-cr*(tants[j]-tants[i])
             tmp += res*res
     chi2 = tmp
-    print(chi2)
+    if verbose:
+        print("Chi2 = ",chi2)
     return (chi2)
 
 
