@@ -106,16 +106,18 @@ class setup:
         if (not os.path.exists(self.data_dir)):
             print("Data directory %s does not seem to exist."%self.data_dir)
             return
+
         # Prepare output files
         if (self.recons_type==0):
             self.outfile = self.data_dir+'/Rec_plane_wave_recons_py.txt'
-            if os.path.exists(self.outfile):
-                # Remove previous files
-                os.remove(self.outfile)
         elif (self.recons_type==1):
             self.outfile = self.data_dir+'/Rec_sphere_wave_recons_py.txt'
         elif (self.recons_type==2):
             self.outfile = self.data_dir+'/Rec_adf_recons_py.txt'
+
+        if os.path.exists(self.outfile):
+            # Remove previous files
+            os.remove(self.outfile)
 
         # Prepare input files, depending on reconstruction type
         if (self.recons_type==1 or self.recons_type==2):
@@ -123,6 +125,7 @@ class setup:
         if (self.recons_type==2):
             self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons_py.txt'
 
+    ### These two functions will disappear, reading is done within the coincidence loop in main()
     def read_angles(self,read_coinc_index=True):
 
         # Read theta,phi results of plane wave fit. Only makes sense if recons=0 has been run first.
@@ -148,10 +151,19 @@ class setup:
         fid.close()
         return
 
+    ################################################################################################
+
     def write_angles(self,outfile,coinc,nants,angles,errors,chi2):
 
         fid = open(outfile,'a')
         fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.8le %12.5le %12.5le \n"%(coinc,nants,angles[0],errors[0],angles[1],errors[1],chi2,np.nan))
+        fid.close()
+
+    def write_xmax(self,outfile,coinc,nants,params,chi2):
+        fid = open(outfile,'a')
+        theta,phi,r_xmax,t_s = params
+        st=np.sin(theta); ct=np.cos(theta); sp=np.sin(phi); cp=np.cos(phi); K = [st*cp,st*sp,ct]
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le\n"%(coinc,nants,chi2,np.nan,-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2],t_s))
         fid.close()
 
 def main():
@@ -214,7 +226,17 @@ def main():
             params_in = np.array(bounds).mean(axis=1)
             res = so.minimize(SWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
                 method='L-BFGS-B',bounds=bounds)
-            print (res.x)
+            params_out = res.x
+            # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
+            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            hess = nd.Hessian(SWF_loss)(params_out,*args)
+            errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            print ("Best fit parameters = ",np.deg2rad(params_out[:2]),params_out[2:])
+            print ("Errors on parameters (from Hessian) = ",np.deg2rad(errors[:2]),errors[2:])
+            print ("Chi2 at bset fit = ",SWF_loss(params_out,*args))
+            print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
+            # Write down resuts to file 
+            st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args))
 
     return
 
