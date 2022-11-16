@@ -166,6 +166,13 @@ class setup:
         fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le\n"%(coinc,nants,chi2,np.nan,-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2],t_s))
         fid.close()
 
+    def write_adf(self,outfile,coinc,nants,params,errors,chi2):
+        fid = open(outfile,'a')
+        theta,phi,delta_omega,amplitude = params
+        fid.write(""%(coinc,nants,np.rad2deg(theta),np.rad2deg(errors,np.rad2deg(phi)),chi2, np.nan,
+                     params_out[2],params_out[3]),float)
+        fid.close()
+
 def main():
 
     if (len(sys.argv) != 3):
@@ -203,7 +210,7 @@ def main():
             print ("Best fit parameters = ",np.rad2deg(params_out))
             print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
             print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
-            print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
+            #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
             # Write down results to file
             st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
                 np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args))
@@ -211,7 +218,7 @@ def main():
     if (st.recons_type==1):
         # SWF model. We assume that PWF reconstrution was run first. Check if corresponding result file exists.
         if not os.path.exists(st.input_angles_file):
-            print("SWF reconstruction was requested, while input angles file %s does not exists."%co.input_angles_file)
+            print("SWF reconstruction was requested, while input angles file %s does not exists."%st.input_angles_file)
             return
         fid_input_angles = open(st.input_angles_file,'r')
         for current_recons in range(co.ncoincs):
@@ -231,14 +238,48 @@ def main():
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
             hess = nd.Hessian(SWF_loss)(params_out,*args)
             errors = np.sqrt(np.diag(np.linalg.inv(hess)))
-            print ("Best fit parameters = ",np.deg2rad(params_out[:2]),params_out[2:])
-            print ("Errors on parameters (from Hessian) = ",np.deg2rad(errors[:2]),errors[2:])
-            print ("Chi2 at bset fit = ",SWF_loss(params_out,*args))
-            print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
-            # Write down resuts to file 
+            print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+            print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+            print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
+            #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
+            # Write down results to file 
             st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args))
 
-    return
+
+    if (st.recons_type==2):
+        # ADF model. We assume that PWF and SWF reconstructions were run first. Check if corresponding result files exist.
+        if not os.path.exists(st.input_angles_file):
+            print("ADF reconstruction was requested, while input input angles file %s dos not exists."%st.input_angles_file)
+            return
+        if not os.path.exists(st.input_xmax_file):
+            print ("ADF reconstruction was requested, while input xmax file %s does not exists."%st.input_xmax_file)
+            return
+        fid_input_angles = open(st.input_angles_file,"r")
+        fid_input_xmax   = open(st.input_xmax_file,"r")
+        for current_recons in range(co.ncoincs):
+            # Read angles obtained with PWF reconstruction
+            l = fid_input_angles.readline().strip().split()
+            theta_in = float(l[2])
+            phi_in   = float(l[4])
+            l = fid_input_xmax.readline().strip().split()
+            Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
+            bounds = [[np.deg2rad(theta_in-2),np.deg2rad(theta_in+2)],
+                      [np.deg2rad(phi_in-2),np.deg2rad(phi_in+2)],
+                      [0.1,3.0],
+                      [1e6,1e10]]
+            params_in = np.array(bounds).mean(axis=1) # Central values
+            res = so.minimize(ADF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],Xmax),
+                              method='L-BFGS-B', bounds=bounds)
+            params_out = res.x
+            # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
+            args = (co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            hess = nd.Hessian(ADF_loss)(params_out,*args)
+            errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+            print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
+
+            return
 
 if __name__ == '__main__':
 
