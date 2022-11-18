@@ -268,11 +268,11 @@ def main():
                       [0.1,3.0],
                       [1e6,1e10]]
             params_in = np.array(bounds).mean(axis=1) # Central values
-            res = so.minimize(ADF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],Xmax),
+            res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
                               method='L-BFGS-B', bounds=bounds)
             params_out = res.x
             # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
-            args = (co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
             hess = nd.Hessian(ADF_loss)(params_out,*args)
             errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])

@@ -127,7 +127,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
         # print('n1 = ',n1)
         res = minor_equation(omega,n0,n1)
-        # print('delay = ',res)
+        print('delay = ',res)
         return(res)
 
     #@njit
@@ -171,6 +171,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     # Now solve for omega
     # Starting point at standard value acos(1/n(Xmax)) 
     omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
+    print("###############")
     omega_cr = fsolve(compute_delay,[omega_cr_guess])
 
     return(omega_cr)
@@ -256,7 +257,7 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
         print ("Chi2 = ",chi2)
     return(chi2)
 
-def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
+def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
     
     '''
 
@@ -283,7 +284,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
 
     '''
 
-    params = theta, phi, delta_omega, amplitude
+    theta, phi, delta_omega, amplitude = params
     nants = Aants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     # Define shower basis vectors
@@ -303,6 +304,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
         return None
 
     # Loop on antennas
+    tmp = 0.
     for i in range(nants):
         # Antenna position from Xmax
         dX = Xants[i,:]-Xmax
@@ -314,12 +316,13 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
         omega = np.arccos(np.dot(K,dX)/l_ant)
         # vector in the plane defined by K and dX, projected onto 
         # horizontal plane
-        val_plan = np.array([dX[0]/l_ant - K[0]], dX[1]/l_ant - K[1])
+        val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
         # Angle between k_plan and val_plan
-        xi = np.arccos(np.dot(k_plan,val_plan)
-                       /np.linalg.norm(k_plan)
+        xi = np.arccos(np.dot(K_plan,val_plan)
+                       /np.linalg.norm(K_plan)
                        /np.linalg.norm(val_plan))
-        omega_cr = compute_Cerenkov(xi,K,xmaxDist,Xmax,2.0e3,groundAltitude)
+        #omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        omega_cr = 0.0079
         # Distribution width. Here rescaled by ratio of cosines (why ?)
         width = ct / (dX[2]/l_ant) * delta_omega
         # Distribution
@@ -329,6 +332,8 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01):
         tmp += (Aants[i]-adf)**2
 
     chi2 = tmp
+    if (verbose):
+        print ("Chi2 = ",chi2)
     return(chi2)
 
 
