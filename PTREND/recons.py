@@ -92,10 +92,11 @@ class coincidence_set:
 
 class setup:
 
-    def __init__(self, data_dir,recons_type):
+    def __init__(self, data_dir,recons_type, compute_errors=False):
 
         self.recons_type = recons_type
         self.data_dir    = data_dir
+        self.compute_errors = compute_errors
         if (self.recons_type<0 or self.recons_type>2):
             print("Choose reconstruction type values in :")
             print("0: plane wave reconstruction")
@@ -125,33 +126,6 @@ class setup:
         if (self.recons_type==2):
             self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons_py.txt'
 
-    ### These two functions will disappear, reading is done within the coincidence loop in main()
-    def read_angles(self,read_coinc_index=True):
-
-        # Read theta,phi results of plane wave fit. Only makes sense if recons=0 has been run first.
-        fid = open(self.input_angles_file,'r')
-        l = fid.readline().strip().split()
-        self.theta_rec = float(l[2])
-        self.phi_rec   = float(l[4])
-        if (read_coinc_index):
-            self.coinc_index_rec_plane = int(l[0])
-        fid.close()
-        return
-
-    def read_xmax(self,read_coinc_index=True):
-
-        # Read xmax,ymax,zmax results of spherical wave fit. Only makes sense if recons=1 has been run first.
-        fid = open(self.input_xmax_file)
-        l = fid.readline().strip().split()
-        self.xmax = float(l[3])
-        self.ymax = float(l[4])
-        self.zmax = float(l[5])
-        if (read_coinc_index):
-            self.coinc_index_rec_sphere = int(l[0])
-        fid.close()
-        return
-
-    ################################################################################################
 
     def write_angles(self,outfile,coinc,nants,angles,errors,chi2):
 
@@ -199,16 +173,22 @@ def main():
     if (st.recons_type==0):
         # PWF model. We do not assume any prior analysis was done.
         for current_recons in range(co.ncoincs):
-            params_in = [np.pi,np.pi]
-            res = so.minimize(PWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
-                method='L-BFGS-B', bounds=[[0.,np.pi],[0.,2*np.pi]])
+            params_in = [3.*np.pi/4,0.]
+            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
+            res = so.minimize(PWF_loss,params_in,args=args,method='Powell', bounds=[[np.pi/2.,np.pi],[0.,2*np.pi]])
+            #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
             params_out = res.x
             # compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-            hess = nd.Hessian(PWF_loss) (params_out,*args)
-            errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            if (st.compute_errors):
+                args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+                hess = nd.Hessian(PWF_loss) (params_out,*args)
+                errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            else:
+                errors = np.array([np.nan]*4)
             print ("Best fit parameters = ",np.rad2deg(params_out))
-            print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
+            ## Errors computation needs work: errors are coming both from noise on amplitude and time measurements
+            if (st.compute_errors):
+                print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
             print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
             #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
             # Write down results to file
@@ -232,12 +212,13 @@ def main():
                       [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
             params_in = np.array(bounds).mean(axis=1)
             res = so.minimize(SWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
-                method='L-BFGS-B',bounds=bounds)
+                method='BFGS',bounds=bounds)
             params_out = res.x
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-            hess = nd.Hessian(SWF_loss)(params_out,*args)
-            errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            #hess = nd.Hessian(SWF_loss)(params_out,*args)
+            #errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            errors = np.zeros(4)
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
             print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
             print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
@@ -263,21 +244,26 @@ def main():
             phi_in   = float(l[4])
             l = fid_input_xmax.readline().strip().split()
             Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
-            bounds = [[np.deg2rad(theta_in-2),np.deg2rad(theta_in+2)],
-                      [np.deg2rad(phi_in-2),np.deg2rad(phi_in+2)],
+            bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
+                      [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
                       [0.1,3.0],
                       [1e6,1e10]]
             params_in = np.array(bounds).mean(axis=1) # Central values
+            ## Refine guess for amplitude, based on maximum of peak values ##
+            lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
+            params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
+            print ('amp_guess = ',params_in[3])
+            ###################
             res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
-                              method='L-BFGS-B', bounds=bounds)
+                              method='BFGS')#, bounds=bounds)
             params_out = res.x
             # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
-            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
-            hess = nd.Hessian(ADF_loss)(params_out,*args)
-            errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            # args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
+            # hess = nd.Hessian(ADF_loss)(params_out,*args)
+            # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
-            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
+            # print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+            # st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
 
             return
 
