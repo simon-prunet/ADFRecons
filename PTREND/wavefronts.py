@@ -171,9 +171,10 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     # Now solve for omega
     # Starting point at standard value acos(1/n(Xmax)) 
     omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
-    print("###############")
-    omega_cr = fsolve(compute_delay,[omega_cr_guess])
-
+    ## print("###############")
+    # omega_cr = fsolve(compute_delay,[omega_cr_guess])
+    ### DEBUG ###
+    omega_cr = omega_cr_guess
     return(omega_cr)
 
 
@@ -182,7 +183,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: 
 
-#@njit
+@njit
 def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
@@ -296,6 +297,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
     mat = np.vstack([KxB,KxKxB,K])
     # 
     XmaxDist = (groundAltitude-Xmax[2])/K[2]
+    # print('XmaxDist = ',XmaxDist)
     asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\eta)
     #
     # Make sure Xants and tants are compatible
@@ -321,8 +323,11 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
         xi = np.arccos(np.dot(K_plan,val_plan)
                        /np.linalg.norm(K_plan)
                        /np.linalg.norm(val_plan))
-        #omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        omega_cr = 0.0079
+        
+        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        omega_cr = 0.015240011539221762
+        # print ("omega_cr = ",omega_cr)
+
         # Distribution width. Here rescaled by ratio of cosines (why ?)
         width = ct / (dX[2]/l_ant) * delta_omega
         # Distribution
@@ -333,7 +338,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
 
     chi2 = tmp
     if (verbose):
-        print ("Chi2 = ",chi2)
+        print ("params = ",params," Chi2 = ",chi2)
     return(chi2)
 
 
