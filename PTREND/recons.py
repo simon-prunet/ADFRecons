@@ -85,7 +85,7 @@ class coincidence_set:
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
-                self.peak_time_array[current_coinc,:self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc,:self.nants[current_coinc]])
+                #self.peak_time_array[current_coinc,:self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc,:self.nants[current_coinc]])
                 self.peak_amp_array[current_coinc,:self.nants[current_coinc]] = peak_amp_array[mask]
                 current_coinc += 1
         return
@@ -184,7 +184,7 @@ def main():
                 hess = nd.Hessian(PWF_loss) (params_out,*args)
                 errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             else:
-                errors = np.array([np.nan]*4)
+                errors = np.array([np.nan]*2)
             print ("Best fit parameters = ",np.rad2deg(params_out))
             ## Errors computation needs work: errors are coming both from noise on amplitude and time measurements
             if (st.compute_errors):
@@ -211,16 +211,21 @@ def main():
                       [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
                       [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
             params_in = np.array(bounds).mean(axis=1)
+            # res = so.minimize(SWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
+            #     method='BFGS',bounds=bounds)
+
             res = so.minimize(SWF_loss,params_in,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),
-                method='BFGS',bounds=bounds)
+                method='BFGS')
             params_out = res.x
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-            #hess = nd.Hessian(SWF_loss)(params_out,*args)
-            #errors = np.sqrt(np.diag(np.linalg.inv(hess)))
-            errors = np.zeros(4)
+            if (st.compute_errors):
+                args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+                hess = nd.Hessian(SWF_loss)(params_out,*args)
+                errors = np.sqrt(np.diag(np.linalg.inv(hessian)))
+            else:
+                errors = np.array([np.nan]*2)      
+
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
             print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
             #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
             # Write down results to file 
@@ -254,8 +259,10 @@ def main():
             params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
             print ('amp_guess = ',params_in[3])
             ###################
+            # res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
+            #                   method='L-BFGS-B')#, bounds=bounds)
             res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
-                              method='BFGS')#, bounds=bounds)
+                              method='BFGS'))
             params_out = res.x
             # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
             # args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
