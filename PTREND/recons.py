@@ -1,8 +1,8 @@
-import jax.numpy as np # import numpy as np
+import numpy as np
 from wavefronts import *
 import sys
 import os
-import jax.scipy.optimize as so # import scipy.optimize as so
+import scipy.optimize as so
 import numdifftools as nd
 c_light = 2.997924580e8
 
@@ -22,6 +22,7 @@ class antenna_set:
         return
 
 class coincidence_set:
+
 
     def __init__(self, coinc_table_file, antenna_set_instance):
 
@@ -173,11 +174,14 @@ def main():
     if (st.recons_type==0):
         # PWF model. We do not assume any prior analysis was done.
         for current_recons in range(co.ncoincs):
-            params_in = [3.*np.pi/4,0.]
+            params_in = [3.*np.pi/4,np.pi]
             # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-            res = so.minimize(PWF_loss,params_in,args=args,method='Powell', bounds=[[np.pi/2.,np.pi],[0.,2*np.pi]])
+
+            res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
+            #res = so.minimize(PWF_loss,params_in,args=args,method='Powell', bounds=[[np.pi/2.,np.pi],[0.,2*np.pi]])
             #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
+            
             params_out = res.x
             # compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
             if (st.compute_errors):
@@ -212,12 +216,16 @@ def main():
                       [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
                       [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
             params_in = np.array(bounds).mean(axis=1)
+            print("params_in = ",params_in)
 
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
-            # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
+            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+
             # res = so.minimize(SWF_loss,params_in,args=args,method='L-BFGS-B',bounds=bounds)
             res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
+            # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
             params_out = res.x
+
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
             if (st.compute_errors):
                 args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])

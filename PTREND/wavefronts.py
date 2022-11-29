@@ -1,7 +1,7 @@
-import jax.numpy as np
-#from numba import njit, float64
+import numpy as np
+from numba import njit, float64
 from scipy.spatial.transform import Rotation as R
-from jax.scipy.optimize import fsolve
+from scipy.optimize import fsolve
 
 R_earth = 6371007.0
 ns = 325
@@ -183,8 +183,72 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: 
 
+#@njit
+def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
+    '''
+    Defines Chi2 by summing model residuals
+    over antenna pairs (i,j):
+    loss = \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
+    where:
+    params=(theta, phi): spherical coordinates of unit shower direction vector K
+    Xants are the antenna positions (shape=(nants,3))
+    tants are the antenna arrival times of the wavefront (trigger time, shape=(nants,))
+    cr is radiation speed, by default 1 since time is expressed in m.
+    '''
+
+    theta,phi = params
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    # Make sure tants and Xants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
+        return None
+    # Use numpy outer methods to build matrix X_ij = x_i -x_j
+    xk = np.dot(Xants,K)
+    DXK = np.subtract.outer(xk,xk)
+    DT  = np.subtract.outer(tants,tants)
+    chi2 = ( (DXK - cr*DT)**2 ).sum() / 2. # Sum over upper triangle, diagonal is zero because of antisymmetry of DXK, DT
+    if verbose:
+        print("Chi2 = ",chi2)
+    return(chi2)
+
+def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
+
+    '''
+    Gradient of PWF_loss, with respect to theta, phi
+    '''
+    theta, phi = params
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+
+    xk = np.dot(Xants,K)
+    # Use numpy outer method to build matrix X_ij = x_i - x_j
+    DXK = np.subtract.outer(xk,xk)
+    DT  = np.subtract.outer(tants,tants)
+    RHS = DXK-cr*DT
+
+    # Derivatives of K w.r.t. theta, phi
+    dKdtheta = np.array([ct*cp,ct*sp,-st])
+    dKdphi   = np.array([-st*sp,st*cp,0.])
+    xk_theta = np.dot(Xants,dKdtheta)
+    xk_phi   = np.dot(Xants,dKdphi)
+    # Use numpy outer method to build matrix X_ij = x_i - x_j
+    DXK_THETA = np.subtract.outer(xk_theta,xk_theta)
+    DXK_PHI   = np.subtract.outer(xk_phi,xk_phi)
+
+    jac_theta = np.sum(DXK_THETA*RHS) # Factor of 2 of derivatives compensates ratio of sum to upper diag sum
+    jac_phi   = np.sum(DXK_PHI*RHS)
+    if verbose:
+        print("Jacobian = ",jac_theta,jac_phi)
+    return np.array([jac_theta,jac_phi])
+
+
+###################################################
+# This one is slower and not used anymore
 @njit
-def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
+def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
@@ -213,7 +277,7 @@ def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     if verbose:
         print("Chi2 = ",chi2)
     return (chi2)
-
+###################################################
 
 @njit
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
@@ -258,6 +322,41 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     if (verbose):
         print ("Chi2 = ",chi2)
     return(chi2)
+
+
+@njit
+def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
+    '''
+    Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
+    '''
+    theta, phi, r_xmax, t_s = params
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+    # Derivatives of Xmax, w.r.t. theta, phi, r_xmax
+    dK_dtheta = np.array([ct*cp,ct*sp,-st])
+    dK_dphi   = np.array([-st*sp,st*cp,0.])
+    dXmax_dtheta = -r_xmax*dK_dtheta
+    dXmax_dphi   = -r_xmax*dK_dphi
+    dXmax_drxmax = -K
+    
+    jac = np.zeros(4)
+    for i in range(nants):
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        dX = Xants[i,:] - Xmax
+        ndX = np.linalg.norm(dX)
+        res = cr*(tants[i]-t_s) - n_average*ndX
+        # Derivatives w.r.t. theta, phi, r_xmax, t_s
+        jac[0] += -2*n_average*np.dot(-dXmax_dtheta,dX)/ndX * res
+        jac[1] += -2*n_average*np.dot(-dXmax_dphi,  dX)/ndX * res
+        jac[2] += -2*n_average*np.dot(-dXmax_drxmax,dX)/ndX * res
+        jac[3] += -2*cr                                     * res 
+    if (verbose):
+        print ("Jacobian = ",jac)
+    return(jac)
+
 
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
     
