@@ -215,6 +215,7 @@ def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 
 
+@njit
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -234,7 +235,7 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     '''
 
     theta, phi, r_xmax, t_s = params
-    print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
     nants = tants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
