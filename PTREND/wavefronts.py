@@ -1,7 +1,7 @@
-import numpy as np
-from numba import njit, float64
+import jax.numpy as np
+#from numba import njit, float64
 from scipy.spatial.transform import Rotation as R
-from scipy.optimize import fsolve
+from jax.scipy.optimize import fsolve
 
 R_earth = 6371007.0
 ns = 325
