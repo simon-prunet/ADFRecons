@@ -88,6 +88,7 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
     return (n_eff)
 
 
+@njit
 def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 
     '''
@@ -127,7 +128,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
         # print('n1 = ',n1)
         res = minor_equation(omega,n0,n1)
-        print('delay = ',res)
+        # print('delay = ',res)
         return(res)
 
     #@njit
@@ -172,9 +173,9 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     # Starting point at standard value acos(1/n(Xmax)) 
     omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
     ## print("###############")
-    # omega_cr = fsolve(compute_delay,[omega_cr_guess])
+    omega_cr = fsolve(compute_delay,[omega_cr_guess])
     ### DEBUG ###
-    omega_cr = omega_cr_guess
+    ## omega_cr = omega_cr_guess
     return(omega_cr)
 
 
@@ -183,7 +184,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: 
 
-#@njit
+
 def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
@@ -313,6 +314,7 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     for i in range(nants):
         # Compute average refraction index between emission and observer
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        ## n_average = 1.0 #DEBUG
         dX = Xants[i,:] - Xmax
         # Spherical wave front
         res = cr*(tants[i]-t_s) - n_average*np.linalg.norm(dX)
@@ -345,6 +347,7 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
     jac = np.zeros(4)
     for i in range(nants):
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        ## n_average = 1.0 ## DEBUG
         dX = Xants[i,:] - Xmax
         ndX = np.linalg.norm(dX)
         res = cr*(tants[i]-t_s) - n_average*ndX
@@ -357,8 +360,8 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
         print ("Jacobian = ",jac)
     return(jac)
 
-
-def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
+@njit
+def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     
     '''
 
@@ -394,7 +397,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
     KxB = np.cross(K,Bvec); KxB /= np.linalg.norm(KxB)
     KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
     # Coordinate transform matrix
-    mat = np.vstack([KxB,KxKxB,K])
+    mat = np.vstack((KxB,KxKxB,K))
     # 
     XmaxDist = (groundAltitude-Xmax[2])/K[2]
     # print('XmaxDist = ',XmaxDist)
@@ -402,7 +405,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
     #
     # Make sure Xants and tants are compatible
     if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
+        print("Shapes of Aants and Xants are incompatible",Aants.shape, Xants.shape)
         return None
 
     # Loop on antennas
@@ -425,7 +428,8 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=True):
                        /np.linalg.norm(val_plan))
         
         # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        omega_cr = 0.015240011539221762
+        # omega_cr = 0.015240011539221762
+        omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
