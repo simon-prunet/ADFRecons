@@ -118,7 +118,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
 
-
+    @njit
     def compute_delay(omega):
 
         X = compute_observer_position(omega)
@@ -427,9 +427,9 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
                        /np.linalg.norm(K_plan)
                        /np.linalg.norm(val_plan))
         
-        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
         # omega_cr = 0.015240011539221762
-        omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)

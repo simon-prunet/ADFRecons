@@ -280,7 +280,7 @@ def main():
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
             print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
             # print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
-            # st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
+            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
 
             return
 
