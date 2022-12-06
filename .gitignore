@@ -1,6 +1,10 @@
 # Prerequisites
 *.d
 
+# numba
+*.nbi
+*.nbc
+
 # Object files
 *.o
 *.ko
@@ -50,3 +54,5 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+/.project
+/.pydevproject
