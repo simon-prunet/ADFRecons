@@ -6,21 +6,27 @@ from scipy.optimize import fsolve
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
+inv_kr = 1/kr
 groundAltitude = 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
 Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_inc),np.cos(B_inc)])
 
+
+kwd = {"fastmath": {"reassoc", "contract", "arcp"}}
+
+
+
 # Simple numba example
-@njit
+@njit(**kwd)
 def dotme(x,y,z):
     res =  np.dot(x,x)
     res += np.dot(y,y)
     res += np.dot(z,z)
     return(res)
 
-@njit
+@njit(**kwd)
 def RefractionIndexAtPosition(X):
 
     R2 = X[0]*X[0] + X[1]*X[1]
@@ -29,7 +35,7 @@ def RefractionIndexAtPosition(X):
     n = 1.+1e-6*rh
     return (n)
 
-@njit
+@njit(**kwd)
 def ZHSEffectiveRefractionIndex(X0,Xa):
 
     R02 = X0[0]**2 + X0[1]**2
@@ -41,11 +47,12 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
     # Refractivity at emission 
     rh0 = ns*np.exp(kr*h0)
 
-    modr = np.sqrt(R02)
+    #modr = np.sqrt(R02)
     # print(modr)
 
-    if (modr > 1e3):
-
+    #if (modr > 1e3):
+    if (R02 > 1e6):
+        modr = np.sqrt(R02)
         # Vector between antenna and emission point
         U = Xa-X0
         # Divide into pieces shorter than 10km
@@ -57,12 +64,13 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
         currh = h0
         s = 0.
 
-        for i in np.arange(nint):
+        for i in range(nint):
             Next = Curr + K # Next point
             nextR2 = Next[0]*Next[0] + Next[1]*Next[1]
-            nexth  = (np.sqrt( (Next[2]+R_earth)**2 + nextR2 ) - R_earth)/1e3
-            if (np.abs(nexth-currh) > 1e-10):
-                s += (np.exp(kr*nexth)-np.exp(kr*currh))/(kr*(nexth-currh))
+            nexth  = (np.sqrt((Next[2]+R_earth)**2 + nextR2 ) - R_earth)/1e3
+            diff = nexth-currh
+            if (np.abs(diff) > 1e-10):
+                s += inv_kr*(np.exp(kr*nexth)-np.exp(kr*currh))/diff
             else:
                 s += np.exp(kr*currh)
 
@@ -88,7 +96,7 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
     return (n_eff)
 
 
-@njit
+@njit(**kwd)
 def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 
     '''
@@ -131,7 +139,6 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         # print('delay = ',res)
         return(res)
 
-    #@njit
     def compute_observer_position(omega):
         '''
         Given angle between shower direction (K) and line joining Xmax and observer's position,
@@ -152,8 +159,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         t = (groundAltitude - Xmax[2])/Dir_obs[2]
         X = Xmax + t*Dir_obs
         return (X)
-
-    @njit
+    
     def minor_equation(omega, n0, n1):
 
         '''
@@ -185,6 +191,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # ADF: 
 
 
+#@njit(**kwd) error with np.subtract.outer
 def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
@@ -214,6 +221,7 @@ def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
         print("Chi2 = ",chi2)
     return(chi2)
 
+#@njit(**kwd) error with np.subtract.outer
 def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -248,7 +256,7 @@ def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
 
 ###################################################
 # This one is slower and not used anymore
-@njit
+@njit(**kwd)
 def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
@@ -280,7 +288,7 @@ def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 ###################################################
 
-@njit
+@njit(**kwd)
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -326,7 +334,7 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     return(chi2)
 
 
-@njit
+@njit(**kwd)
 def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
@@ -356,11 +364,11 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
         jac[1] += -2*n_average*np.dot(-dXmax_dphi,  dX)/ndX * res
         jac[2] += -2*n_average*np.dot(-dXmax_drxmax,dX)/ndX * res
         jac[3] += -2*cr                                     * res 
-    if (verbose):
-        print ("Jacobian = ",jac)
+    # if (verbose):
+    #     print ("Jacobian = ",jac)
     return(jac)
 
-@njit
+@njit(**kwd)
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     
     '''
