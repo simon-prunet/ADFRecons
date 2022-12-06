@@ -245,6 +245,47 @@ def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
         print("Jacobian = ",jac_theta,jac_phi)
     return np.array([jac_theta,jac_phi])
 
+def PWF_hess(params, Xants, tants, cr=1.0, verbose=False):
+    '''
+    Hessian of PWF_loss, with respect to theta, phi
+    '''
+    theta, phi = params
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+
+    xk = np.dot(Xants,K)
+    # Use numpy outer method to build matrix X_ij = x_i - x_j
+    DXK = np.subtract.outer(xk,xk)
+    DT  = np.subtract.outer(tants,tants)
+    RHS = DXK-cr*DT
+
+    # Derivatives of K w.r.t. theta, phi
+    dK_dtheta = np.array([ct*cp,ct*sp,-st])
+    dK_dphi   = np.array([-st*sp,st*cp,0.])
+    d2K_dtheta= np.array([-st*cp,-st*sp,-ct])
+    d2K_dphi  = np.array([-st*cp,-st*sp,0.])
+    d2K_dtheta_dphi = np.array([-ct*sp,ct*cp,0.]) 
+
+    xk_theta = np.dot(Xants,dK_dtheta)
+    xk_phi   = np.dot(Xants,dK_dphi)
+    xk2_theta = np.dot(Xants,d2K_dtheta)
+    xk2_phi   = np.dot(Xants,d2K_dphi)
+    xk2_theta_phi = np.dot(Xants,d2K_dtheta_dphi)
+
+    #Use numpy outer method to buid matrix X_ij = x_i - x_j
+    DXK_THETA = np.subtract.outer(xk_theta,xk_theta)
+    DXK_PHI   = np.subtract.outer(xk_phi,xk_phi)
+    DXK2_THETA = np.subtract.outer(xk2_theta,xk2_theta)
+    DXK2_PHI   = np.subtract.outer(xk2_phi,xk2_phi)
+    DXK2_THETA_PHI = np.subtract.outer(xk2_theta_phi,xk2_theta_phi)
+
+    hess_theta2 = np.sum(DXK2_THETA*RHS + DXK_THETA**2)
+    hess_phi2   = np.sum(DXK2_PHI*RHS + DXK_PHI**2)
+    hess_theta_phi = np.sum(DXK2_THETA_PHI*RHS + DXK_THETA*DXK_PHI)
+
+    return (np.array([[hess_theta2, hess_theta_phi], [hess_theta_phi, hess_phi2]]))
+
 
 ###################################################
 # This one is slower and not used anymore

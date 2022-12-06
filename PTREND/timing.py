@@ -3,7 +3,7 @@ from recons import *
 data_dir = '../Chiche/'
 import timeit
 
-def time_PWF(grad=False,verbose=False,number=1000):
+def time_PWF(grad=False,hess=False,verbose=False,number=1000):
 
     an = antenna_set('../Chiche/coord_antennas.txt')
     co = coincidence_set('../Chiche/Rec_coinctable.txt',an)
@@ -13,6 +13,8 @@ def time_PWF(grad=False,verbose=False,number=1000):
     params_in = np.array([3*np.pi/4.,np.pi])
     if (grad):        
         total_time = timeit.timeit(lambda: so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method="BFGS"),number=number)
+    elif (hess):
+        total_time = timeit.timeit(lambda: so.minimize(PWF_loss,params_in,jac=PWF_grad,hess=PWF_hess,args=args,method="Newton-CG"),number=number)
     else:
         total_time = timeit.timeit(lambda: so.minimize(PWF_loss,params_in,args=args,method="BFGS"),number=number)
 
@@ -20,12 +22,19 @@ def time_PWF(grad=False,verbose=False,number=1000):
 
     if verbose:
         args=(co.antenna_coords_array[0,:],co.peak_time_array[0,:],1,True)
-    res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
+    
+    if (grad):
+        res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
+    elif (hess):
+        res = so.minimize(PWF_loss,params_in,jac=PWF_grad,hess=PWF_hess,args=args,method='Newton-CG')
+    else:
+        res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
     params_out = res.x
     print ("Best fit parameters = ",*np.rad2deg(params_out))
     print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
+    print(res)
 
-    return
+    return(res)
 
 def time_SWF(grad=False,verbose=False,number=100):
 
