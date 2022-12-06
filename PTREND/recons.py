@@ -222,8 +222,8 @@ def main():
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
             # res = so.minimize(SWF_loss,params_in,args=args,method='L-BFGS-B',bounds=bounds)
-            res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
-            # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+            #res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
+            res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
             params_out = res.x
 
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms

@@ -3,7 +3,7 @@ from recons import *
 data_dir = '../Chiche/'
 import timeit
 
-def time_PWF(grad=False,verbose=False,number=1000):
+def time_PWF(grad=True,verbose=False,number=1000):
 
     an = antenna_set('../Chiche/coord_antennas.txt')
     co = coincidence_set('../Chiche/Rec_coinctable.txt',an)
@@ -27,7 +27,7 @@ def time_PWF(grad=False,verbose=False,number=1000):
 
     return
 
-def time_SWF(grad=False,verbose=False,number=100):
+def time_SWF(grad=True,verbose=False,number=100):
 
     # RUN FIRST python recons.py 0 '../Chiche'
     # Read guess for theta, phi from plane wave
