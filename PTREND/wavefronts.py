@@ -483,6 +483,7 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
     dXmax_drxmax = -K
     
     jac = np.zeros(4)
+    jac_temp = np.zeros(4)
     for i in range(nants):
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
         ## n_average = 1.0 ## DEBUG
@@ -491,11 +492,11 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
         ndX =sqrt(dX[0]*dX[0] + dX[1]*dX[1] + dX[2]*dX[2])
         res = cr*(tants[i]-t_s) - n_average*ndX
         # Derivatives w.r.t. theta, phi, r_xmax, t_s
-        jac[0] = dXmax_dtheta[0]*dX[0] + dXmax_dtheta[1]*dX[1] + dXmax_dtheta[2]*dX[2]
-        jac[1] = dXmax_dphi[0]*dX[0]   + dXmax_dphi[1]*dX[1]   + dXmax_dphi[2]*dX[2]
-        jac[2] = dXmax_drxmax[0]*dX[0] + dXmax_drxmax[1]*dX[1] + dXmax_drxmax[2]*dX[2]
-        jac[:3] *= 2*n_average*res/ndX
-        jac[3] = -2*cr*res 
+        coef = 2*n_average*res/ndX
+        jac[0] += coef*(dXmax_dtheta[0]*dX[0] + dXmax_dtheta[1]*dX[1] + dXmax_dtheta[2]*dX[2])
+        jac[1] += coef*(dXmax_dphi[0]*dX[0]   + dXmax_dphi[1]*dX[1]   + dXmax_dphi[2]*dX[2])
+        jac[2] += coef*(dXmax_drxmax[0]*dX[0] + dXmax_drxmax[1]*dX[1] + dXmax_drxmax[2]*dX[2])
+        jac[3] += -2*cr*res 
     # if (verbose):
     #     print ("Jacobian = ",jac)
     return(jac)
