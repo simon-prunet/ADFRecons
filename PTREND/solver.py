@@ -20,8 +20,8 @@ def newton(func,x0,tol=1e-7,nstep_max = 100, args = [], verbose=False):
     while ((rel_error > tol) and (nstep<nstep_max)):
         x = xold - func(xold,*args)/der(func,xold,args=args)
         nstep += 1
-#        if verbose:
-#            print ("x @ iteration %d = %15.10f"%(nstep,x))
+        if verbose==True:
+            print ("x at iteration",nstep, 'is ',x)
         rel_error = np.abs((x-xold)/xold)
         xold = x
 #    if (nstep == nstep_max):
