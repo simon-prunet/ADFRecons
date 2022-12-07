@@ -113,4 +113,4 @@ def time_ADF(verbose=True,number=100):
     print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
 
 
-    return
+    return (res)

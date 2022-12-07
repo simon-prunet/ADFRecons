@@ -144,8 +144,10 @@ class setup:
     def write_adf(self,outfile,coinc,nants,params,errors,chi2):
         fid = open(outfile,'a')
         theta,phi,delta_omega,amplitude = params
-        fid.write(""%(coinc,nants,np.rad2deg(theta),np.rad2deg(errors,np.rad2deg(phi)),chi2, np.nan,
-                     params_out[2],params_out[3]),float)
+        theta_err, phi_err, delta_omega_err, amplitude_err = errors
+        format_string = "%ld %3.0d "+"%12.5le "*8+"\n"
+        fid.write(format_string%(coinc,nants,np.rad2deg(theta),np.rad2deg(theta_err),
+            np.rad2deg(phi),np.rad2deg(phi_err),chi2, np.nan,delta_omega,amplitude))
         fid.close()
 
 def main():
@@ -274,13 +276,14 @@ def main():
                               method='BFGS')
             params_out = res.x
             # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
-            # args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
+            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
             # hess = nd.Hessian(ADF_loss)(params_out,*args)
             # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+            errors = np.array([np.nan]*4)
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
+            print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
             # print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
-            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
+            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args))
 
             return
 

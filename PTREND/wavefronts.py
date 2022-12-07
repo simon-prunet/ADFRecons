@@ -1,7 +1,9 @@
 import numpy as np
-from numba import njit, float64
+from numba import njit, float64, prange
 from scipy.spatial.transform import Rotation as R
 from scipy.optimize import fsolve
+from solver import newton
+from rotation import rotation
 
 R_earth = 6371007.0
 ns = 325
@@ -87,6 +89,60 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
 
     return (n_eff)
 
+@njit
+def compute_observer_position(omega,Xmax,U,K):
+    '''
+    Given angle between shower direction (K) and line joining Xmax and observer's position,
+    horizontal direction to observer's position, Xmax position and groundAltitude, compute
+    coordinates of observer
+    '''
+
+    # Compute rotation axis. Make sure it is normalized
+    Rot_axis = np.cross(U,K)
+    Rot_axis /= np.linalg.norm(Rot_axis)
+    # Compute rotation matrix from Rodrigues formula
+    Rotmat = rotation(omega,Rot_axis)
+    # Define rotation using scipy's method
+    # Rotation = R.from_rotvec(-omega * Rot_axis)
+    # print('#####')
+    # print(Rotation.as_matrix())
+    # print('#####')
+    # Dir_obs  = Rotation.apply(K)
+    Dir_obs = np.dot(Rotmat,K)
+    # Compute observer's position
+    t = (groundAltitude - Xmax[2])/Dir_obs[2]
+    X = Xmax + t*Dir_obs
+    return (X)
+
+@njit
+def minor_equation(omega, n0, n1, alpha, delta, xmaxDist):
+
+    '''
+    Compute time delay (in m)
+    '''
+    Lx = xmaxDist
+    sa = np.sin(alpha)
+    saw = np.sin(alpha-omega) # Keeping minus sign to compare to Valentin's results. Should be plus sign.
+    com = np.cos(omega)
+    # Eq. 3.38 p125.
+    res = Lx*Lx * sa*sa *(n0*n0-n1*n1) + 2*Lx*sa*saw*delta*(n0-n1*n1*com) + delta*delta*(1.-n1*n1)*saw*saw
+
+    return(res)
+
+@njit
+def compute_delay(omega,Xmax,Xb,U,K,alpha,delta, xmaxDist):
+
+    X = compute_observer_position(omega,Xmax,U,K)
+    # print('omega = ',omega,'X_obs = ',X)
+    n0 = ZHSEffectiveRefractionIndex(Xmax,X)
+    # print('n0 = ',n0)
+    n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
+    # print('n1 = ',n1)
+    res = minor_equation(omega,n0,n1,alpha, delta, xmaxDist)
+    # print('delay = ',res)
+    return(res)
+
+
 
 @njit
 def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
@@ -118,65 +174,17 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
 
-    @njit
-    def compute_delay(omega):
-
-        X = compute_observer_position(omega)
-        # print('omega = ',omega,'X_obs = ',X)
-        n0 = ZHSEffectiveRefractionIndex(Xmax,X)
-        # print('n0 = ',n0)
-        n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
-        # print('n1 = ',n1)
-        res = minor_equation(omega,n0,n1)
-        # print('delay = ',res)
-        return(res)
-
-    #@njit
-    def compute_observer_position(omega):
-        '''
-        Given angle between shower direction (K) and line joining Xmax and observer's position,
-        horizontal direction to observer's position, Xmax position and groundAltitude, compute
-        coordinates of observer
-        '''
-
-        # Compute rotation axis. Make sure it is normalized
-        Rot_axis = np.cross(U,K)
-        Rot_axis /= np.linalg.norm(Rot_axis)
-        # Define rotation using scipy's method
-        Rotation = R.from_rotvec(-omega * Rot_axis)
-        # print('#####')
-        # print(Rotation.as_matrix())
-        # print('#####')
-        Dir_obs  = Rotation.apply(K)
-        # Compute observer's position
-        t = (groundAltitude - Xmax[2])/Dir_obs[2]
-        X = Xmax + t*Dir_obs
-        return (X)
-
-    @njit
-    def minor_equation(omega, n0, n1):
-
-        '''
-        Compute time delay (in m)
-        '''
-        Lx = xmaxDist
-        sa = np.sin(alpha)
-        saw = np.sin(alpha-omega) # Keeping minus sign to compare to Valentin's results. Should be plus sign.
-        com = np.cos(omega)
-        # Eq. 3.38 p125.
-        res = Lx*Lx * sa*sa *(n0*n0-n1*n1) + 2*Lx*sa*saw*delta*(n0-n1*n1*com) + delta*delta*(1.-n1*n1)*saw*saw
-
-        return(res)
-
 
     # Now solve for omega
     # Starting point at standard value acos(1/n(Xmax)) 
     omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
-    ## print("###############")
-    omega_cr = fsolve(compute_delay,[omega_cr_guess])
+    # print("###############")
+    # omega_cr = fsolve(compute_delay,[omega_cr_guess])
+    omega_cr = newton(compute_delay, omega_cr_guess, args=(Xmax,Xb,U,K,alpha,delta, xmaxDist),verbose=False)
     ### DEBUG ###
     ## omega_cr = omega_cr_guess
     return(omega_cr)
+
 
 
 # Loss functions (chi2), according to different models:
@@ -321,7 +329,7 @@ def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 ###################################################
 
-@njit
+@njit(parallel=False)
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -352,7 +360,7 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
         print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
         return None
     tmp = 0.
-    for i in range(nants):
+    for i in prange(nants):
         # Compute average refraction index between emission and observer
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
         ## n_average = 1.0 #DEBUG
@@ -400,6 +408,26 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
     if (verbose):
         print ("Jacobian = ",jac)
     return(jac)
+
+
+@njit
+def SWF_hess(params, Xants, tants, cr=1.0, verbose=False):
+    '''
+    Hessian of SWF loss, w.r.t. theta, phi, r_xmax, t_s
+    '''
+    theta, phi, r_xmax, t_s = params
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+    # Derivatives of Xmax, w.r.t. theta, phi, r_xmax
+    dK_dtheta = np.array([ct*cp,ct*sp,-st])
+    dK_dphi   = np.array([-st*sp,st*cp,0.])
+    dXmax_dtheta = -r_xmax*dK_dtheta
+    dXmax_dphi   = -r_xmax*dK_dphi
+    dXmax_drxmax = -K
+
 
 @njit
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
