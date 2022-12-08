@@ -53,6 +53,7 @@ def distrib_SWF(path_guess, pos_du, peak_time_noised):
         # print(f'======= Process event {idx_event+1}')
         args = (pos_du, peak_time_noised[idx_event])
         res = so.minimize(SWF_loss, params_in.copy(), jac=SWF_grad, args=args, method="BFGS")
+        #res = so.minimize(SWF_loss_ref, params_in.copy(), jac=SWF_grad_ref, args=args, method="BFGS")
         a_sol[idx_event,:2 ] = np.rad2deg(res.x[:2])
         a_sol[idx_event, 2 ] = res.x[2]
         print (f"#{idx_event:04}# Best fit param :  {a_sol[idx_event,:2 ]}  {a_sol[idx_event, 2 ]}, Chi2= {SWF_loss(res.x, *args)}")
