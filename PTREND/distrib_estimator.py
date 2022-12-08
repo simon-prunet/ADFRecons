@@ -70,14 +70,14 @@ if __name__ == '__main__':
     path_pos = "../Chiche/coord_antennas.txt"
     path_event = "../Chiche/Rec_coinctable.txt"
     path_guess_SWF = "../Chiche/Rec_plane_wave_recons_py.txt"
-    # in km 
-    sigma_t = 1e-9
+    # in second 
+    sigma_t = 0.1e-9
     nb_tirage = 500
     an, no_noise_time, noise_time = read_event_add_noise(path_event, path_pos, nb_tirage, sigma_t)
     print(no_noise_time[:10])
     print(noise_time[0,:10])
     print(noise_time[1,:10])
     a_sol = distrib_SWF(path_guess_SWF, an, noise_time)
-    title = f'Angles distribution ({nb_tirage} fit) for noised time (sigma={sigma_t/1e-9}ns), with SWF method' 
+    title = f'Angles distribution ({nb_tirage} fit) for noised time (sigma={sigma_t/1e-9:4.2}ns), with SWF method' 
     plot_dist_angle(a_sol[:, 0], a_sol[:, 1], title)
     plt.show()
