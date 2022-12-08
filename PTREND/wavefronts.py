@@ -101,7 +101,7 @@ def compute_observer_position(omega,Xmax,U,K):
     Rot_axis = np.cross(U,K)
     Rot_axis /= np.linalg.norm(Rot_axis)
     # Compute rotation matrix from Rodrigues formula
-    Rotmat = rotation(omega,Rot_axis)
+    Rotmat = rotation(-omega,Rot_axis)
     # Define rotation using scipy's method
     # Rotation = R.from_rotvec(-omega * Rot_axis)
     # print('#####')
@@ -182,7 +182,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     # omega_cr = fsolve(compute_delay,[omega_cr_guess])
     omega_cr = newton(compute_delay, omega_cr_guess, args=(Xmax,Xb,U,K,alpha,delta, xmaxDist),verbose=False)
     ### DEBUG ###
-    ## omega_cr = omega_cr_guess
+    # omega_cr = omega_cr_guess
     return(omega_cr)
 
 
