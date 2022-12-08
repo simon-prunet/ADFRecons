@@ -4,7 +4,7 @@
 from wavefronts import *
 from recons import *
 import matplotlib.pyplot as plt
-
+from datetime import datetime
 
 path_pos = "../Chiche/coord_antennas.txt"
 path_event = "../Chiche/Rec_coinctable.txt"
@@ -25,7 +25,6 @@ def read_event_add_noise(path_event, path_pos, nb_event_noised, sigma_t, sigma_v
     noise_time = no_noise_time + noise.reshape((nb_event_noised, nb_du))
     # add biais
     # noise_time  + = c_light * 10e-9             
-    
     return an_pos, no_noise_time, noise_time
 
 
@@ -36,6 +35,7 @@ def distrib_SWF(path_guess, pos_du, peak_time_noised):
     :param pos_du:
     :param peak_time_noised: array[nb_event_noised, nb_du]
     '''
+    t_start_proc = datetime.now()
     with open(path_guess) as fid_angles:
         l = fid_angles.readline().strip().split()
         theta_in, phi_in = np.float64(l[2]), np.float64(l[4])
@@ -49,7 +49,6 @@ def distrib_SWF(path_guess, pos_du, peak_time_noised):
     nb_event = peak_time_noised.shape[0]
     # array best fit parameter
     a_sol = np.empty((nb_event, 3), dtype=np.float64)
-    
     for idx_event in range(nb_event):
         # print(f'======= Process event {idx_event+1}')
         args = (pos_du, peak_time_noised[idx_event])
@@ -57,6 +56,7 @@ def distrib_SWF(path_guess, pos_du, peak_time_noised):
         a_sol[idx_event,:2 ] = np.rad2deg(res.x[:2])
         a_sol[idx_event, 2 ] = res.x[2]
         print (f"#{idx_event:04}# Best fit param :  {a_sol[idx_event,:2 ]}  {a_sol[idx_event, 2 ]}, Chi2= {SWF_loss(res.x, *args)}")
+    print(f'duration (h:m:s): {datetime.now()-t_start_proc}')
     return a_sol
 
 
@@ -71,8 +71,9 @@ def plot_dist_angle(angle1, angle2, title=""):
     ax2.hist(angle2)
     ax2.set_xlabel(f"degree/%\nmean={angle2.mean()}\nstd={angle2.std()}")
     ax2.grid()
+
     
-def main_SWF(nb_tirage = 500, sigma_t = 0.1e-9):
+def main_SWF(nb_tirage=500, sigma_t=0.1e-9):
     '''
     
     :param nb_tirage:
@@ -89,16 +90,15 @@ def main_SWF(nb_tirage = 500, sigma_t = 0.1e-9):
     true_angle1 = 117.02
     true_angle2 = 270.0
     title = f'True error angles distribution ({nb_tirage} fit) for noised time (sigma={sigma_t/1e-9:4.2}ns), with SWF method'
-    plot_dist_angle(a_sol[:, 0]-true_angle1, a_sol[:, 1]-true_angle2, title)
+    plot_dist_angle(a_sol[:, 0] - true_angle1, a_sol[:, 1] - true_angle2, title)
     # relative error
     true_angle1 = 117.02
     true_angle2 = 270.0
     title = f'Relative error angles distribution ({nb_tirage} fit) for noised time (sigma={sigma_t/1e-9:4.2}ns), with SWF method'
-    plot_dist_angle(100*(a_sol[:, 0]-true_angle1)/true_angle1, 
-                    100*(a_sol[:, 1]-true_angle2)/true_angle2, title)
-    
+    plot_dist_angle(100 * (a_sol[:, 0] - true_angle1) / true_angle1,
+                    100 * (a_sol[:, 1] - true_angle2) / true_angle2, title)
     
     
 if __name__ == '__main__':
-    main_SWF(1000, sigma_t =2e-9)
+    main_SWF(1000, sigma_t=2e-9)
     plt.show()
