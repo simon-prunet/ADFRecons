@@ -56,7 +56,7 @@ def distrib_SWF(path_guess, pos_du, peak_time_noised):
         res = so.minimize(SWF_loss, params_in.copy(), jac=SWF_grad, args=args, method="BFGS")
         a_sol[idx_event,:2 ] = np.rad2deg(res.x[:2])
         a_sol[idx_event, 2 ] = res.x[2]
-        print (f"Best fit parameters #{idx_event}# =  {a_sol[idx_event,:2 ]}  {a_sol[idx_event, 2 ]}, Chi2= {SWF_loss(res.x, *args)}")
+        print (f"#{idx_event:04}# Best fit param :  {a_sol[idx_event,:2 ]}  {a_sol[idx_event, 2 ]}, Chi2= {SWF_loss(res.x, *args)}")
     return a_sol
 
 
@@ -65,11 +65,11 @@ def plot_dist_angle(angle1, angle2, title=""):
     fig.suptitle(title)
     ax1.set_title("azimth ? ")
     ax1.hist(angle1)
-    ax1.set_xlabel(f'degree\nmean={angle1.mean()}\nstd={angle1.std()}')
+    ax1.set_xlabel(f'degree/%\nmean={angle1.mean()}\nstd={angle1.std()}')
     ax1.grid()
     ax2.set_title("elevation ?")
     ax2.hist(angle2)
-    ax2.set_xlabel(f"degree\nmean={angle2.mean()}\nstd={angle2.std()}")
+    ax2.set_xlabel(f"degree/%\nmean={angle2.mean()}\nstd={angle2.std()}")
     ax2.grid()
     
 def main_SWF(nb_tirage = 500, sigma_t = 0.1e-9):
@@ -90,6 +90,13 @@ def main_SWF(nb_tirage = 500, sigma_t = 0.1e-9):
     true_angle2 = 270.0
     title = f'True error angles distribution ({nb_tirage} fit) for noised time (sigma={sigma_t/1e-9:4.2}ns), with SWF method'
     plot_dist_angle(a_sol[:, 0]-true_angle1, a_sol[:, 1]-true_angle2, title)
+    # relative error
+    true_angle1 = 117.02
+    true_angle2 = 270.0
+    title = f'Relative error angles distribution ({nb_tirage} fit) for noised time (sigma={sigma_t/1e-9:4.2}ns), with SWF method'
+    plot_dist_angle(100*(a_sol[:, 0]-true_angle1)/true_angle1, 
+                    100*(a_sol[:, 1]-true_angle2)/true_angle2, title)
+    
     
     
 if __name__ == '__main__':
