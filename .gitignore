@@ -5,6 +5,9 @@
 *.nbi
 *.nbc
 
+# python
+*__pycache__
+
 # Object files
 *.o
 *.ko
@@ -54,5 +57,7 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# eclipse 
 /.project
 /.pydevproject
