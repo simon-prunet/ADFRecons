@@ -1,26 +1,34 @@
 import numpy as np
-from numba import njit, float64
+from numba import jit, njit, float64
 from scipy.spatial.transform import Rotation as R
 from scipy.optimize import fsolve
+import functools
+from math import sqrt
 
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
+inv_kr = 1/kr
 groundAltitude = 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
 Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_inc),np.cos(B_inc)])
 
+
+kwd = {"fastmath": {"reassoc", "contract", "arcp"}}
+
+
+
 # Simple numba example
-@njit
+@njit(**kwd)
 def dotme(x,y,z):
     res =  np.dot(x,x)
     res += np.dot(y,y)
     res += np.dot(z,z)
     return(res)
 
-@njit
+@njit(**kwd)
 def RefractionIndexAtPosition(X):
 
     R2 = X[0]*X[0] + X[1]*X[1]
@@ -29,23 +37,27 @@ def RefractionIndexAtPosition(X):
     n = 1.+1e-6*rh
     return (n)
 
-@njit
+
+@njit(cache=True, fastmath=True)
+#@njit(**kwd)
 def ZHSEffectiveRefractionIndex(X0,Xa):
 
-    R02 = X0[0]**2 + X0[1]**2
+    R02 = X0[0]*X0[0] + X0[1]*X0[0]
     
     # Altitude of emission in km
-    h0 = (np.sqrt( (X0[2]+R_earth)**2 + R02 ) - R_earth)/1e3
+    temp = X0[2]+R_earth
+    h0 = (np.sqrt(temp*temp + R02 ) - R_earth)/1e3
     # print(h0)
     
     # Refractivity at emission 
     rh0 = ns*np.exp(kr*h0)
 
-    modr = np.sqrt(R02)
+    #modr = np.sqrt(R02)
     # print(modr)
 
-    if (modr > 1e3):
-
+    #if (modr > 1e3):
+    if (R02 > 1e6):
+        modr = np.sqrt(R02)
         # Vector between antenna and emission point
         U = Xa-X0
         # Divide into pieces shorter than 10km
@@ -57,12 +69,14 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
         currh = h0
         s = 0.
 
-        for i in np.arange(nint):
+        for i in range(nint):
             Next = Curr + K # Next point
             nextR2 = Next[0]*Next[0] + Next[1]*Next[1]
-            nexth  = (np.sqrt( (Next[2]+R_earth)**2 + nextR2 ) - R_earth)/1e3
-            if (np.abs(nexth-currh) > 1e-10):
-                s += (np.exp(kr*nexth)-np.exp(kr*currh))/(kr*(nexth-currh))
+            temp2 = Next[2]+R_earth
+            nexth  = (np.sqrt(temp2*temp2 + nextR2 ) - R_earth)/1e3
+            diff = nexth-currh
+            if np.abs(diff) > 1e-10:
+                s += inv_kr*(np.exp(kr*nexth)-np.exp(kr*currh))/diff
             else:
                 s += np.exp(kr*currh)
 
@@ -88,7 +102,7 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
     return (n_eff)
 
 
-@njit
+@njit(**kwd)
 def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 
     '''
@@ -131,7 +145,6 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         # print('delay = ',res)
         return(res)
 
-    #@njit
     def compute_observer_position(omega):
         '''
         Given angle between shower direction (K) and line joining Xmax and observer's position,
@@ -152,8 +165,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
         t = (groundAltitude - Xmax[2])/Dir_obs[2]
         X = Xmax + t*Dir_obs
         return (X)
-
-    @njit
+    
     def minor_equation(omega, n0, n1):
 
         '''
@@ -185,6 +197,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # ADF: 
 
 
+@jit #error with np.subtract.outer
 def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
@@ -214,6 +227,7 @@ def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
         print("Chi2 = ",chi2)
     return(chi2)
 
+@jit #error with np.subtract.outer
 def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -248,8 +262,8 @@ def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
 
 ###################################################
 # This one is slower and not used anymore
-@njit
-def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
+@jit
+def PWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
@@ -280,7 +294,57 @@ def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 ###################################################
 
-@njit
+@njit(cache=True, fastmath=True)
+def SWF_loss_nok(params, Xants, tants, cr=1.0, verbose=False):
+
+    '''
+    Defines Chi2 by summing model residuals over antennas  (i):
+    loss = \sum_i ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
+    where:
+    Xants are the antenna positions (shape=(nants,3))
+    tants are the trigger times (shape=(nants,))
+    x_s = \sin(\theta)\cos(\phi)
+    y_s = \sin(\theta)\sin(\phi)
+    z_s = \cos(\theta)
+
+    Inputs: params = theta, phi, r_xmax, t_s
+    \theta, \phi are the spherical coordinates of the vector K
+    t_s is the source emission time
+    cr is the radiation speed in medium, by default 1 since time is expressed in m.
+    '''
+
+    theta, phi, r_xmax, t_s = params
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+
+    # Make sure Xants and tants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
+        return None
+    tmp = 0.
+    dX = Xants - Xmax
+    #print(Xants.shape, Xmax.shape)
+    delta_t = tants - t_s
+    #print(tants.shape, t_s.shape)
+    for i in range(nants):
+        # Compute average refraction index between emission and observer
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        ## n_average = 1.0 #DEBUG
+        # Spherical wave front
+        res = cr*delta_t[i] - n_average*np.linalg.norm(dX[i])
+        tmp += res*res
+
+    chi2 = tmp
+    if (verbose):
+        print ("Chi2 = ",chi2)
+    return(chi2)
+
+
+#@njit(cache=True, fastmath=True)
+@njit(**kwd)
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -313,11 +377,11 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     tmp = 0.
     for i in range(nants):
         # Compute average refraction index between emission and observer
-        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        n_average= ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
         ## n_average = 1.0 #DEBUG
         dX = Xants[i,:] - Xmax
         # Spherical wave front
-        res = cr*(tants[i]-t_s) - n_average*np.linalg.norm(dX)
+        res = cr*(tants[i]-t_s) - n_average*sqrt(dX[0]*dX[0]+dX[1]*dX[1]+dX[2]*dX[2])
         tmp += res*res
 
     chi2 = tmp
@@ -326,8 +390,9 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     return(chi2)
 
 
-@njit
-def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
+
+@njit(cache=True, fastmath=True)
+def SWF_grad_nok(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
     '''
@@ -351,16 +416,92 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
         dX = Xants[i,:] - Xmax
         ndX = np.linalg.norm(dX)
         res = cr*(tants[i]-t_s) - n_average*ndX
+        one_dX = (2*n_average* res/ndX)*dX
+        # Derivatives w.r.t. theta, phi, r_xmax, t_s
+        jac[0] += -np.dot(-dXmax_dtheta,one_dX)
+        jac[1] += -np.dot(-dXmax_dphi,  one_dX)
+        jac[2] += -np.dot(-dXmax_drxmax,one_dX)
+        jac[3] += -2*cr                                     * res 
+    # if (verbose):
+    #     print ("Jacobian = ",jac)
+    return(jac)
+
+
+
+#@njit(cache=True, fastmath=True)
+@njit(**kwd)
+def SWF_grad_ori(params, Xants, tants, cr=1.0, verbose=False):
+    '''
+    Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
+    '''
+    theta, phi, r_xmax, t_s = params
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+    # Derivatives of Xmax, w.r.t. theta, phi, r_xmax
+    dK_dtheta = np.array([ct*cp,ct*sp,-st])
+    dK_dphi   = np.array([-st*sp,st*cp,0.])
+    dXmax_dtheta = -r_xmax*dK_dtheta
+    dXmax_dphi   = -r_xmax*dK_dphi
+    dXmax_drxmax = -K
+    
+    jac = np.zeros(4)
+    for i in range(nants):
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        ## n_average = 1.0 ## DEBUG
+        dX = Xants[i,:] - Xmax
+        #ndX = np.linalg.norm(dX)
+        ndX =sqrt(dX[0]*dX[0] + dX[1]*dX[1] + dX[2]*dX[2])
+        res = cr*(tants[i]-t_s) - n_average*ndX
         # Derivatives w.r.t. theta, phi, r_xmax, t_s
         jac[0] += -2*n_average*np.dot(-dXmax_dtheta,dX)/ndX * res
         jac[1] += -2*n_average*np.dot(-dXmax_dphi,  dX)/ndX * res
         jac[2] += -2*n_average*np.dot(-dXmax_drxmax,dX)/ndX * res
         jac[3] += -2*cr                                     * res 
-    if (verbose):
-        print ("Jacobian = ",jac)
+    # if (verbose):
+    #     print ("Jacobian = ",jac)
+    return(jac)
+#@njit(cache=True, fastmath=True)
+@njit(**kwd)
+def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
+    '''
+    Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
+    '''
+    theta, phi, r_xmax, t_s = params
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+    # Derivatives of Xmax, w.r.t. theta, phi, r_xmax
+    dK_dtheta = np.array([ct*cp,ct*sp,-st])
+    dK_dphi   = np.array([-st*sp,st*cp,0.])
+    dXmax_dtheta = -r_xmax*dK_dtheta
+    dXmax_dphi   = -r_xmax*dK_dphi
+    dXmax_drxmax = -K
+    
+    jac = np.zeros(4)
+    jac_temp = np.zeros(4)
+    for i in range(nants):
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        ## n_average = 1.0 ## DEBUG
+        dX = Xants[i,:] - Xmax
+        #ndX = np.linalg.norm(dX)
+        ndX =sqrt(dX[0]*dX[0] + dX[1]*dX[1] + dX[2]*dX[2])
+        res = cr*(tants[i]-t_s) - n_average*ndX
+        # Derivatives w.r.t. theta, phi, r_xmax, t_s
+        coef = 2*n_average*res/ndX
+        jac[0] += coef*(dXmax_dtheta[0]*dX[0] + dXmax_dtheta[1]*dX[1] + dXmax_dtheta[2]*dX[2])
+        jac[1] += coef*(dXmax_dphi[0]*dX[0]   + dXmax_dphi[1]*dX[1]   + dXmax_dphi[2]*dX[2])
+        jac[2] += coef*(dXmax_drxmax[0]*dX[0] + dXmax_drxmax[1]*dX[1] + dXmax_drxmax[2]*dX[2])
+        jac[3] += -2*cr*res 
+    # if (verbose):
+    #     print ("Jacobian = ",jac)
     return(jac)
 
-@njit
+@njit(**kwd)
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     
     '''

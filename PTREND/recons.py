@@ -222,8 +222,8 @@ def main():
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
             # res = so.minimize(SWF_loss,params_in,args=args,method='L-BFGS-B',bounds=bounds)
-            res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
-            # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+            #res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
+            res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
             params_out = res.x
 
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
@@ -270,6 +270,7 @@ def main():
             ###################
             # res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
             #                   method='L-BFGS-B')#, bounds=bounds)
+            #args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
             res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
                               method='BFGS')
             params_out = res.x
@@ -278,6 +279,7 @@ def main():
             # hess = nd.Hessian(ADF_loss)(params_out,*args)
             # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
             print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
             # print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
             st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
