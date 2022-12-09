@@ -270,13 +270,13 @@ def main():
             params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
             print ('amp_guess = ',params_in[3])
             ###################
+            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax, 0.01, True)
             # res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
             #                   method='L-BFGS-B')#, bounds=bounds)
-            res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
-                              method='BFGS')
+            res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
+            print (res)
             params_out = res.x
             # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
-            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax)
             # hess = nd.Hessian(ADF_loss)(params_out,*args)
             # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             errors = np.array([np.nan]*4)

@@ -511,7 +511,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
 
     chi2 = tmp
     if (verbose):
-        print ("params = ",params," Chi2 = ",chi2)
+        print ("params = ",np.rad2deg(params[:2]),params[2:]," Chi2 = ",chi2)
     return(chi2)
 
 
