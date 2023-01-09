@@ -4,7 +4,10 @@ from scipy.spatial.transform import Rotation as R
 from scipy.optimize import fsolve
 from solver import newton
 from rotation import rotation
+# Used for interpolation
+n_omega_cr = 20
 
+# Physical constants
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
@@ -14,15 +17,17 @@ B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
 Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_inc),np.cos(B_inc)])
 
+kwd = {"fastmath": {"reassoc", "contract", "arcp"}}
+
 # Simple numba example
-@njit
+@njit(**kwd)
 def dotme(x,y,z):
     res =  np.dot(x,x)
     res += np.dot(y,y)
     res += np.dot(z,z)
     return(res)
 
-@njit
+@njit(**kwd)
 def RefractionIndexAtPosition(X):
 
     R2 = X[0]*X[0] + X[1]*X[1]
@@ -31,7 +36,7 @@ def RefractionIndexAtPosition(X):
     n = 1.+1e-6*rh
     return (n)
 
-@njit
+@njit(**kwd)
 def ZHSEffectiveRefractionIndex(X0,Xa):
 
     R02 = X0[0]**2 + X0[1]**2
@@ -89,7 +94,7 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
 
     return (n_eff)
 
-@njit
+@njit(**kwd)
 def compute_observer_position(omega,Xmax,U,K):
     '''
     Given angle between shower direction (K) and line joining Xmax and observer's position,
@@ -114,7 +119,7 @@ def compute_observer_position(omega,Xmax,U,K):
     X = Xmax + t*Dir_obs
     return (X)
 
-@njit
+@njit(**kwd)
 def minor_equation(omega, n0, n1, alpha, delta, xmaxDist):
 
     '''
@@ -129,7 +134,7 @@ def minor_equation(omega, n0, n1, alpha, delta, xmaxDist):
 
     return(res)
 
-@njit
+@njit(**kwd)
 def compute_delay(omega,Xmax,Xb,U,K,alpha,delta, xmaxDist):
 
     X = compute_observer_position(omega,Xmax,U,K)
@@ -144,7 +149,7 @@ def compute_delay(omega,Xmax,Xb,U,K,alpha,delta, xmaxDist):
 
 
 
-@njit
+@njit(**kwd)
 def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 
     '''
@@ -186,11 +191,15 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     return(omega_cr)
 
 
+# @njit(**kwd)
+# def compute_Cerenkov_constraint(eta, K, xmaxDist, Xmax, delta, groundAltitude):
+
+
 
 # Loss functions (chi2), according to different models:
 # PWF: Plane wave function
 # SWF: Spherical wave function
-# ADF: 
+# ADF: Amplitude Distribution Function (see Valentin Decoene's thesis)
 
 
 def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
@@ -297,7 +306,7 @@ def PWF_hess(params, Xants, tants, cr=1.0, verbose=False):
 
 ###################################################
 # This one is slower and not used anymore
-@njit
+@njit(**kwd)
 def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Defines Chi2 by summing model residuals
@@ -329,7 +338,7 @@ def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 ###################################################
 
-@njit(parallel=False)
+@njit(**kwd)(parallel=False)
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -375,7 +384,7 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     return(chi2)
 
 
-@njit
+@njit(**kwd)
 def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
@@ -410,7 +419,7 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
     return(jac)
 
 
-@njit
+@njit(**kwd)
 def SWF_hess(params, Xants, tants, cr=1.0, verbose=False):
     '''
     Hessian of SWF loss, w.r.t. theta, phi, r_xmax, t_s
@@ -429,7 +438,7 @@ def SWF_hess(params, Xants, tants, cr=1.0, verbose=False):
     dXmax_drxmax = -K
 
 
-@njit
+@njit(**kwd)
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     
     '''
@@ -470,12 +479,20 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     # 
     XmaxDist = (groundAltitude-Xmax[2])/K[2]
     # print('XmaxDist = ',XmaxDist)
-    asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\eta)
+    asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\alpha)
     #
     # Make sure Xants and tants are compatible
     if (Xants.shape[0] != nants):
         print("Shapes of Aants and Xants are incompatible",Aants.shape, Xants.shape)
         return None
+
+    # Precompute an array of Cerenkov angles to interpolate over (as in Valentin's code)
+    omega_cerenkov = np.zeros(n_omega_cr+1)
+    xi_table = np.arange(n_omega_cr+1)/n_omega_cr*2.*np.pi
+    for i in range(n_omega_cr):
+        omega_cerenkov[i] = compute_Cerenkov(xi_table[i],K,XmaxDist,Xmax,2.0e3,groundAltitude)
+    # Enforce boundary condition, as numba does not like "period" keyword of np.interp
+    omega_cerenkov[-1] = omega_cerenkov[0]
 
     # Loop on antennas
     tmp = 0.
@@ -496,7 +513,9 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
                        /np.linalg.norm(K_plan)
                        /np.linalg.norm(val_plan))
         
-        omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        # Interpolate to save time
+        omega_cr = np.interp(xi,xi_table,omega_cerenkov)
         # omega_cr = 0.015240011539221762
         # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
