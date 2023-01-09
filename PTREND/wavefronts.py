@@ -338,7 +338,7 @@ def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
     return (chi2)
 ###################################################
 
-@njit(**kwd)(parallel=False)
+@njit(**kwd,parallel=False)
 def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     '''
@@ -436,7 +436,7 @@ def SWF_hess(params, Xants, tants, cr=1.0, verbose=False):
     dXmax_dtheta = -r_xmax*dK_dtheta
     dXmax_dphi   = -r_xmax*dK_dphi
     dXmax_drxmax = -K
-
+    ### TO BE WRITTEN... WORTH IT ?
 
 @njit(**kwd)
 def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
@@ -533,6 +533,9 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         print ("params = ",np.rad2deg(params[:2]),params[2:]," Chi2 = ",chi2)
     return(chi2)
 
+@njit(**kwd)
+def log_ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
 
+    return np.log10(ADF_loss(params, Aants, Xants, Xmax, asym_coeff=asym_coeff,verbose=verbose))
 
 
