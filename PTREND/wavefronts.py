@@ -15,7 +15,7 @@ groundAltitude = 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
-Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_inc),np.cos(B_inc)])
+Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_dec),np.cos(B_inc)])
 
 kwd = {"fastmath": {"reassoc", "contract", "arcp"}}
 
@@ -487,12 +487,12 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         return None
 
     # Precompute an array of Cerenkov angles to interpolate over (as in Valentin's code)
-    omega_cerenkov = np.zeros(n_omega_cr+1)
-    xi_table = np.arange(n_omega_cr+1)/n_omega_cr*2.*np.pi
-    for i in range(n_omega_cr):
+    omega_cerenkov = np.zeros(2*n_omega_cr+1)
+    xi_table = np.arange(2*n_omega_cr+1)/n_omega_cr*np.pi
+    for i in range(n_omega_cr+1):
         omega_cerenkov[i] = compute_Cerenkov(xi_table[i],K,XmaxDist,Xmax,2.0e3,groundAltitude)
-    # Enforce boundary condition, as numba does not like "period" keyword of np.interp
-    omega_cerenkov[-1] = omega_cerenkov[0]
+    # Enforce symmetry
+    omega_cerenkov[n_omega_cr+1:] = (omega_cerenkov[:n_omega_cr])[::-1]
 
     # Loop on antennas
     tmp = 0.
@@ -538,4 +538,151 @@ def log_ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
 
     return np.log10(ADF_loss(params, Aants, Xants, Xmax, asym_coeff=asym_coeff,verbose=verbose))
 
+
+@njit(**kwd)
+def PWF_residuals(params, Xants, tants, cr=1.0):
+
+    '''
+    Computes timing residuals for each antenna using plane wave model
+    Note that this is defined at up to an additive constant
+    '''
+    theta, phi = params
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    res = cr*tants - np.dot(Xants,K)
+    return(res)
+
+@njit(**kwd,parallel=False)
+def SWF_residuals(params, Xants, tants, cr=1.0, verbose=False):
+
+    '''
+    Computes timing residuals for each antenna (i):
+    residual[i] = ( cr(tants[i]-t_s) - \sqrt{(Xants[i,0]-x_s)**2)+(Xants[i,1]-y_s)**2+(Xants[i,2]-z_s)**2} )**2
+    where:
+    Xants are the antenna positions (shape=(nants,3))
+    tants are the trigger times (shape=(nants,))
+    x_s = \sin(\theta)\cos(\phi)
+    y_s = \sin(\theta)\sin(\phi)
+    z_s = \cos(\theta)
+
+    Inputs: params = theta, phi, r_xmax, t_s
+    \theta, \phi are the spherical coordinates of the vector K
+    t_s is the source emission time
+    cr is the radiation speed in medium, by default 1 since time is expressed in m.
+    '''
+
+    theta, phi, r_xmax, t_s = params
+    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
+
+    # Make sure Xants and tants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
+        return None
+    tmp = 0.
+    res = np.zeros(nants)
+    for i in prange(nants):
+        # Compute average refraction index between emission and observer
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        ## n_average = 1.0 #DEBUG
+        dX = Xants[i,:] - Xmax
+        # Spherical wave front
+        res[i] = cr*(tants[i]-t_s) - n_average*np.linalg.norm(dX)
+
+    return(res)
+
+@njit(**kwd)
+def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
+    
+    '''
+
+    Computes amplitude residual for each antenna (i):
+    residual[i] = (A_i - f_i^{ADF}(\theta,\phi,\delta\omega,A,r_xmax))**2
+    where the ADF function reads:
+    
+    f_i = f_i(\omega_i, \eta_i, \alpha, l_i, \delta_omega, A)
+        = A/l_i f_geom(\alpha, \eta_i) f_Cerenkov(\omega,\delta_\omega)
+    
+    where 
+    
+    f_geom(\alpha, \eta_i) = (1 + B \sin(\alpha))**2 \cos(\eta_i) # B is here the geomagnetic asymmetry
+    f_Cerenkov(\omega_i,\delta_\omega) = 1 / (1+4{ (\tan(\omega_i)/\tan(\omega_c))**2 - 1 ) / \delta_\omega }**2 )
+    
+    Input parameters are: params = theta, phi, delta_omega, amplitude
+    \theta, \phi define the shower direction angles, \delta_\omega the width of the Cerenkov ring, 
+    A is the amplitude paramater, r_xmax is the norm of the position vector at Xmax.
+
+    Derived parameters are: 
+    \alpha, angle between the shower axis and the magnetic field
+    \eta_i is the azimuthal angle of the (projection of the) antenna position in shower plane
+    \omega_i is the angle between the shower axis and the vector going from Xmax to the antenna position
+
+    '''
+
+    theta, phi, delta_omega, amplitude = params
+    nants = Aants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    # Define shower basis vectors
+    K = np.array([st*cp,st*sp,ct])
+    K_plan = np.array([K[0],K[1]])
+    KxB = np.cross(K,Bvec); KxB /= np.linalg.norm(KxB)
+    KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
+    # Coordinate transform matrix
+    mat = np.vstack((KxB,KxKxB,K))
+    # 
+    XmaxDist = (groundAltitude-Xmax[2])/K[2]
+    # print('XmaxDist = ',XmaxDist)
+    asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\alpha)
+    #
+    # Make sure Xants and tants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of Aants and Xants are incompatible",Aants.shape, Xants.shape)
+        return None
+
+    # Precompute an array of Cerenkov angles to interpolate over (as in Valentin's code)
+    omega_cerenkov = np.zeros(n_omega_cr+1)
+    xi_table = np.arange(n_omega_cr+1)/n_omega_cr*2.*np.pi
+    for i in range(n_omega_cr):
+        omega_cerenkov[i] = compute_Cerenkov(xi_table[i],K,XmaxDist,Xmax,2.0e3,groundAltitude)
+    # Enforce boundary condition, as numba does not like "period" keyword of np.interp
+    omega_cerenkov[-1] = omega_cerenkov[0]
+
+    # Loop on antennas
+    res = np.zeros(nants)
+    for i in range(nants):
+        # Antenna position from Xmax
+        dX = Xants[i,:]-Xmax
+        # Expressed in shower frame coordinates
+        dX_sp = np.dot(mat,dX)
+        #
+        l_ant = np.linalg.norm(dX)
+        eta = np.arctan2(dX_sp[1],dX_sp[0])
+        omega = np.arccos(np.dot(K,dX)/l_ant)
+        # vector in the plane defined by K and dX, projected onto 
+        # horizontal plane
+        val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
+        # Angle between k_plan and val_plan
+        xi = np.arccos(np.dot(K_plan,val_plan)
+                       /np.linalg.norm(K_plan)
+                       /np.linalg.norm(val_plan))
+        
+        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        # Interpolate to save time
+        omega_cr = np.interp(xi,xi_table,omega_cerenkov)
+        # omega_cr = 0.015240011539221762
+        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        # print ("omega_cr = ",omega_cr)
+
+        # Distribution width. Here rescaled by ratio of cosines (why ?)
+        width = ct / (dX[2]/l_ant) * delta_omega
+        # Distribution
+        adf = amplitude/l_ant / (1.+4.*( ((np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2)
+        adf *= 1. + asym*np.cos(eta) # 
+        # Chi2
+        res[i]= (Aants[i]-adf)
+
+    return(res)
 
