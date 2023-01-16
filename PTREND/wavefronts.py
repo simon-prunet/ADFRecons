@@ -1,7 +1,5 @@
 import numpy as np
-from numba import jit, njit, float64
-from scipy.spatial.transform import Rotation as R
-from scipy.optimize import fsolve
+from numba import jit, njit
 from solver import newton
 from rotation import rotation
 # Used for interpolation
@@ -41,8 +39,8 @@ def RefractionIndexAtPosition(X):
     return (n)
 
 
-@njit(cache=True, fastmath=True)
-#@njit(**kwd)
+#@njit(cache=True, fastmath=True)
+@njit(**kwd)
 def ZHSEffectiveRefractionIndex(X0,Xa):
 
     R02 = X0[0]*X0[0] + X0[1]*X0[0]
