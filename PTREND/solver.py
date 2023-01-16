@@ -1,14 +1,16 @@
 import numpy as np
 from numba import njit
+kwd = {"cache": True, "fastmath": {"reassoc", "contract", "arcp"}}
 
-@njit
+
+@njit(**kwd)
 def der(func,x,args=[], eps=1e-7):
     '''
     Forward estimate of derivative
     '''
     return ((func(x+eps,*args)-func(x,*args))/eps)
 
-@njit
+@njit(**kwd)
 def newton(func,x0,tol=1e-7,nstep_max = 100, args = [], verbose=False):
     '''
     Newton method for zero finding.

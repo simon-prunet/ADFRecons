@@ -1,7 +1,8 @@
 import numpy as np
 from numba import njit
+kwd = {"cache": True, "fastmath": {"reassoc", "contract", "arcp"}}
 
-@njit
+@njit(**kwd)
 def rotation(angle,axis):
     '''
     Compute rotation matrix from angle and axis coordinates,
