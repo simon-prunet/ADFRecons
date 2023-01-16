@@ -14,7 +14,7 @@ groundAltitude = 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
-Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_inc),np.cos(B_inc)])
+Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_dec),np.cos(B_inc)])
 
 
 kwd = {"cache": True, "fastmath": {"reassoc", "contract", "arcp"}}
@@ -455,12 +455,12 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         return None
 
     # Precompute an array of Cerenkov angles to interpolate over (as in Valentin's code)
-    omega_cerenkov = np.zeros(n_omega_cr+1)
-    xi_table = np.arange(n_omega_cr+1)/n_omega_cr*2.*np.pi
-    for i in range(n_omega_cr):
+    omega_cerenkov = np.zeros(2*n_omega_cr+1)
+    xi_table = np.arange(2*n_omega_cr+1)/n_omega_cr*np.pi
+    for i in range(n_omega_cr+1):
         omega_cerenkov[i] = compute_Cerenkov(xi_table[i],K,XmaxDist,Xmax,2.0e3,groundAltitude)
-    # Enforce boundary condition, as numba does not like "period" keyword of np.interp
-    omega_cerenkov[-1] = omega_cerenkov[0]
+    # Enforce symmetry
+    omega_cerenkov[n_omega_cr+1:] = (omega_cerenkov[:n_omega_cr])[::-1]
 
     # Loop on antennas
     tmp = 0.
