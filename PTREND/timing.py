@@ -1,12 +1,11 @@
 from wavefronts import *
 from recons import *
-data_dir = '../Chiche/'
 import timeit
 
-def time_PWF(grad=False,hess=False,verbose=False,number=1000):
+def time_PWF(grad=False,hess=False,verbose=False,number=1000,simdir='../Chiche'):
 
-    an = antenna_set('../Chiche/coord_antennas.txt')
-    co = coincidence_set('../Chiche/Rec_coinctable.txt',an)
+    an = antenna_set(simdir+'/coord_antennas.txt')
+    co = coincidence_set(simdir+'/Rec_coinctable.txt',an)
     current_recons = 0
     args=(co.antenna_coords_array[0,:],co.peak_time_array[0,:])
 
@@ -36,16 +35,16 @@ def time_PWF(grad=False,hess=False,verbose=False,number=1000):
 
     return(res)
 
-def time_SWF(grad=False,verbose=False,number=100):
+def time_SWF(grad=False,verbose=False,number=100,simdir='../Chiche'):
 
     # RUN FIRST python recons.py 0 '../Chiche'
     # Read guess for theta, phi from plane wave
-    fid_angles = open(data_dir+'Rec_plane_wave_recons_py.txt')
+    fid_angles = open(simdir+'/Rec_plane_wave_recons_py.txt')
     l = fid_angles.readline().strip().split()
     theta_in,phi_in = np.float(l[2]),np.float(l[4])
 
-    an = antenna_set('../Chiche/coord_antennas.txt')
-    co = coincidence_set('../Chiche/Rec_coinctable.txt',an)
+    an = antenna_set(simdir+'/coord_antennas.txt')
+    co = coincidence_set(simdir+'/Rec_coinctable.txt',an)
     current_recons = 0
     args=(co.antenna_coords_array[0,:],co.peak_time_array[0,:])
 
@@ -73,19 +72,19 @@ def time_SWF(grad=False,verbose=False,number=100):
 
     return
 
-def time_ADF(verbose=True,number=100):
+def time_ADF(verbose=True,number=100,simdir='../Chiche'):
 
     # RUN FIRST python recons.py 1 '../Chiche'
     # Read guess for theta, phi from plane wave
-    fid_angles = open(data_dir+'Rec_plane_wave_recons_py.txt')
+    fid_angles = open(simdir+'/Rec_plane_wave_recons_py.txt')
     l = fid_angles.readline().strip().split()
     theta_in,phi_in = np.float(l[2]),np.float(l[4])
 
-    an = antenna_set('../Chiche/coord_antennas.txt')
-    co = coincidence_set('../Chiche/Rec_coinctable.txt',an)
+    an = antenna_set(simdir+'/coord_antennas.txt')
+    co = coincidence_set(simdir+'/Rec_coinctable.txt',an)
     current_recons = 0
     # Read guess for Xmax from spherical wave
-    fid_xmax = open(data_dir+'Rec_sphere_wave_recons_py.txt')
+    fid_xmax = open(simdir+'/Rec_sphere_wave_recons_py.txt')
     l = fid_xmax.readline().strip().split()
     Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
     # Init parameters. Make better guess for amplitude from max of peak amplitudes
