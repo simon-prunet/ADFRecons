@@ -180,7 +180,8 @@ def main():
             # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
-            res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
+            res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
+            #res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
             #res = so.minimize(PWF_loss,params_in,args=args,method='Powell', bounds=[[np.pi/2.,np.pi],[0.,2*np.pi]])
             #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
             
@@ -224,8 +225,8 @@ def main():
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
             # res = so.minimize(SWF_loss,params_in,args=args,method='L-BFGS-B',bounds=bounds)
-            #res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
-            res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+            res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
+            #res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
             params_out = res.x
 
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
@@ -281,10 +282,9 @@ def main():
             # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             errors = np.array([np.nan]*4)
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
             print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
             # print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
-            # st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,ADF_loss(params_out,*args))
+            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args))
 
             return
 
