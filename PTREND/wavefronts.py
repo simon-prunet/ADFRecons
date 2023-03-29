@@ -556,8 +556,25 @@ def PWF_residuals(params, Xants, tants, cr=1.0):
     theta, phi = params
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
-    res = cr*tants - np.dot(Xants,K)
+    dX = Xants - np.array([0.,0.,groundAltitude])
+    res = cr*tants - np.dot(dX,K)
     return(res)
+
+@njit(**kwd):
+def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
+    '''
+    Generates plane wavefront timings, zero at shower core, with jitter noise added
+    '''
+    theta, phi = params
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi), sp=np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    dX = Xants - np.array([0.,0.,groundAltitude])
+    tants = np.dot(dX,K) / cr 
+    # Add noise
+    rng = np.random.default_rng(iseed)
+    n = rng.standard_normal(tants.size) * sigma_t * c_light
+    return (tants + n)
+
 
 @njit(**kwd,parallel=False)
 def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
@@ -600,6 +617,33 @@ def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
         res[i] = cr*(tants[i]-t_s) - n_average*np.linalg.norm(dX)
 
     return(res)
+
+@njit(**kwd):
+def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0)
+    '''
+    Computes simulated wavefront timings for the spherical case.
+    Inputs: params = theta, phi, r_xmax, t_s
+    \theta, \phi are the spherical angular coordinates of Xmax, and  
+    r_xmax is the distance of Xmax to the reference point of coordinates (0,0,groundAltitude)
+    sigma_t is the timing jitter noise, in ns
+    iseed is the integer random seed of the noise generator
+    c_r is the speed of light in vacuum, in units of c_light
+    '''
+    theta, phi, r_xmax, t_s = params
+    nants = Xants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp, st*sp, ct])
+    Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude])
+    tants = np.zeros(nants)
+    for i in prange(nants):
+        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        dX = Xants[i,:] - Xmax
+        tants[i] = t_s + n_average / cr * np.linalg.norm(dX)
+
+    rng = np.random.default_rng(iseed)
+    n = rng.standard_normal(tants.size) * sigma_t * c_light
+    return (tants + n)
+
 
 @njit(**kwd)
 def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
