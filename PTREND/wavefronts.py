@@ -43,6 +43,7 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
     
     # Altitude of emission in km
     h0 = (np.sqrt( (X0[2]+R_earth)**2 + R02 ) - R_earth)/1e3
+    # print('Altitude of emission in km = ',h0)
     # print(h0)
     
     # Refractivity at emission 
@@ -202,7 +203,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # ADF: Amplitude Distribution Function (see Valentin Decoene's thesis)
 
 
-def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
+def PWF_loss(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
@@ -228,10 +229,11 @@ def PWF_loss(params, Xants, tants,cr=1.0, verbose=False):
     DT  = np.subtract.outer(tants,tants)
     chi2 = ( (DXK - cr*DT)**2 ).sum() / 2. # Sum over upper triangle, diagonal is zero because of antisymmetry of DXK, DT
     if verbose:
+        print("params = ",np.rad2deg(params))
         print("Chi2 = ",chi2)
     return(chi2)
 
-def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
+def PWF_grad(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
     Gradient of PWF_loss, with respect to theta, phi
@@ -262,7 +264,7 @@ def PWF_grad(params, Xants, tants, cr=1.0, verbose=False):
         print("Jacobian = ",jac_theta,jac_phi)
     return np.array([jac_theta,jac_phi])
 
-def PWF_hess(params, Xants, tants, cr=1.0, verbose=False):
+def PWF_hess(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Hessian of PWF_loss, with respect to theta, phi
     '''
@@ -307,7 +309,7 @@ def PWF_hess(params, Xants, tants, cr=1.0, verbose=False):
 ###################################################
 # This one is slower and not used anymore
 @njit(**kwd)
-def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
+def PWF_loss_nonp(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Defines Chi2 by summing model residuals
     over antenna pairs (i,j):
@@ -339,7 +341,7 @@ def PWF_loss_nonp(params, Xants, tants, cr=1.0, verbose=False):
 ###################################################
 
 @njit(**kwd,parallel=False)
-def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
+def SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
@@ -358,7 +360,6 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     '''
 
     theta, phi, r_xmax, t_s = params
-    # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
     nants = tants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
@@ -372,6 +373,8 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
     for i in prange(nants):
         # Compute average refraction index between emission and observer
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        #if (verbose) :
+        #    print('n_average = ',n_average)
         ## n_average = 1.0 #DEBUG
         dX = Xants[i,:] - Xmax
         # Spherical wave front
@@ -380,14 +383,18 @@ def SWF_loss(params, Xants, tants, cr=1.0, verbose=False):
 
     chi2 = tmp
     if (verbose):
+        print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
         print ("Chi2 = ",chi2)
     return(chi2)
 
 
 @njit(**kwd)
-def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
+def SWF_grad(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
+    Note that this gradient is approximate in the sense that it 
+    does not take into account the variations of the line of sight
+    mean refractive index with Xmax(theta,phi,r_xmax)
     '''
     theta, phi, r_xmax, t_s = params
     # print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
@@ -420,7 +427,7 @@ def SWF_grad(params, Xants, tants, cr=1.0, verbose=False):
 
 
 @njit(**kwd)
-def SWF_hess(params, Xants, tants, cr=1.0, verbose=False):
+def SWF_hess(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Hessian of SWF loss, w.r.t. theta, phi, r_xmax, t_s
     '''
@@ -553,7 +560,7 @@ def PWF_residuals(params, Xants, tants, cr=1.0):
     return(res)
 
 @njit(**kwd,parallel=False)
-def SWF_residuals(params, Xants, tants, cr=1.0, verbose=False):
+def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
     Computes timing residuals for each antenna (i):

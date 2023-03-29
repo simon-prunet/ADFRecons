@@ -21,7 +21,7 @@ def time_PWF(grad=False,hess=False,verbose=False,number=1000):
     print ("Time to minimize loss = %.2f"%(total_time/number*1000), " (ms)")
 
     if verbose:
-        args=(co.antenna_coords_array[0,:],co.peak_time_array[0,:],1,True)
+        args=(co.antenna_coords_array[0,:],co.peak_time_array[0,:],True)
     
     if (grad):
         res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
