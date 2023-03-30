@@ -8,6 +8,7 @@ from rotation import rotation
 n_omega_cr = 20
 
 # Physical constants
+c_light = 2.997924580e8
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
@@ -560,19 +561,19 @@ def PWF_residuals(params, Xants, tants, cr=1.0):
     res = cr*tants - np.dot(dX,K)
     return(res)
 
-@njit(**kwd):
+@njit(**kwd)
 def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
     '''
     Generates plane wavefront timings, zero at shower core, with jitter noise added
     '''
     theta, phi = params
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi), sp=np.sin(phi)
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp=np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
     dX = Xants - np.array([0.,0.,groundAltitude])
     tants = np.dot(dX,K) / cr 
     # Add noise
-    rng = np.random.default_rng(iseed)
-    n = rng.standard_normal(tants.size) * sigma_t * c_light
+    np.random.seed(iseed)
+    n = np.random.standard_normal(tants.size) * sigma_t * c_light
     return (tants + n)
 
 
@@ -608,7 +609,7 @@ def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
         return None
     tmp = 0.
     res = np.zeros(nants)
-    for i in prange(nants):
+    for i in range(nants):
         # Compute average refraction index between emission and observer
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
         ## n_average = 1.0 #DEBUG
@@ -618,8 +619,8 @@ def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     return(res)
 
-@njit(**kwd):
-def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0)
+@njit(**kwd)
+def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
     '''
     Computes simulated wavefront timings for the spherical case.
     Inputs: params = theta, phi, r_xmax, t_s
@@ -635,13 +636,13 @@ def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0)
     K = np.array([st*cp, st*sp, ct])
     Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude])
     tants = np.zeros(nants)
-    for i in prange(nants):
+    for i in range(nants):
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
         dX = Xants[i,:] - Xmax
         tants[i] = t_s + n_average / cr * np.linalg.norm(dX)
 
-    rng = np.random.default_rng(iseed)
-    n = rng.standard_normal(tants.size) * sigma_t * c_light
+    np.random.seed(iseed)
+    n = np.random.standard_normal(tants.size) * sigma_t * c_light
     return (tants + n)
 
 
