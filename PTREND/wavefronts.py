@@ -562,7 +562,7 @@ def PWF_residuals(params, Xants, tants, cr=1.0):
     return(res)
 
 @njit(**kwd)
-def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
+def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
     '''
     Generates plane wavefront timings, zero at shower core, with jitter noise added
     '''
@@ -572,7 +572,8 @@ def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
     dX = Xants - np.array([0.,0.,groundAltitude])
     tants = np.dot(dX,K) / cr 
     # Add noise
-    np.random.seed(iseed)
+    if (iseed is not None):
+        np.random.seed(iseed)
     n = np.random.standard_normal(tants.size) * sigma_t * c_light
     return (tants + n)
 
