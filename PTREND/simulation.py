@@ -45,7 +45,7 @@ class Simulations:
 					
 		elif (self.simulation_type=='SWF'):
 			for i in range(number_of_sets):
-				for i in range(number_of_events):
+				for k in range(number_of_events):
 					tants[a,:] = SWF_simulation(params[i,:], self.antennas.coordinates, iseed=iseed, sigma_t=sigma_t)
 					a+=1
 		else:
