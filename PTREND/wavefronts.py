@@ -739,3 +739,10 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
 
     return(res)
 
+@njit(**kwd)
+def ADF_simulation(params, Xants, Xmax, asym_coeff=0.01):
+
+    nants = Xants.shape[0]
+    res = -ADF_residuals(params,np.zeros(nants), Xants, Xmax, asym_coeff=asym_coeff)
+    return (res)
+
