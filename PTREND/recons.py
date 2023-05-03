@@ -82,7 +82,7 @@ class coincidence_set:
                 # Next line assumes that the antenna coordinate files gives all antennas in order, starting from antenna number=init_ant
                 # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
                 self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.ant_set.init_ant
-                self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[self.antenna_index_array[current_coinc,:self.nants[current_coinc]]]
+                self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[antenna_index_array[mask]]
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
