@@ -46,9 +46,14 @@ class Simulations:
 			tants[0,:] = SWF_simulation(params, self.antennas.coordinates, iseed=iseed, sigma_t=sigma_t)
 			for i in range(1, number_of_events):
 				tants[i,:] = SWF_simulation(params, self.antennas.coordinates,sigma_t=sigma_t)
-		elif (self.simulation_type=='ADF'):
-			Aants = np.zeros((number_of_events,self.antennas.nants))
-			Aants[0,:] = SWF_simulation(params,self.antennas.coordinates,self.)
+		# Need to pass params dictionary, from which (different) params for SWF and ADF simulations would be extracted
+		# For now a complete simulation with timings from SWF and amplitudes from ADF cannot work as is
+		# elif (self.simulation_type=='ADF'):
+		# 	Aants = np.zeros((number_of_events,self.antennas.nants))
+		#	tants[0,:] = SWF_simulation(params,self.antennas.coordinates, iseed=iseed, sigma_t=sigma_t)
+		#	for i in range(1, number_of_events):
+		#		tants[i,:] = SWF_simulation(params, self.antennas.coordinates, sigma_t=sigma_t)
+
 		else:
 			print('Only PWF (plane wave) and SWF (spherical wave) are supported now')
 			return
