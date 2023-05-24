@@ -82,7 +82,8 @@ class coincidence_set:
                 # Next line assumes that the antenna coordinate files gives all antennas in order, starting from antenna number=init_ant
                 # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
                 self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.ant_set.init_ant
-                self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[self.antenna_index_array[current_coinc,:self.nants[current_coinc]]]
+                #self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[self.antenna_index_array[current_coinc,:self.nants[current_coinc]]]
+                self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[antenna_index_array[mask]]
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
@@ -131,7 +132,7 @@ class setup:
     def write_angles(self,outfile,coinc,nants,angles,errors,chi2):
 
         fid = open(outfile,'a')
-        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.8le %12.5le %12.5le \n"%(coinc,nants,angles[0],errors[0],angles[1],errors[1],chi2,np.nan))
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le \n"%(coinc,nants,angles[0],errors[0],angles[1],errors[1],chi2,np.nan))
         fid.close()
 
     def write_xmax(self,outfile,coinc,nants,params,chi2):
@@ -152,6 +153,12 @@ class setup:
 
 def main():
 
+    def no_periodicity(theta):
+        if theta >=np.pi or theta <=(np.pi/2):
+            n = int(theta/(np.pi)+1)
+            theta = np.pi*n - theta
+        return theta
+
     if (len(sys.argv) != 3):
         print ("Usage: python recons.py <recons_type> <data_dir> ")
         print ("recons_type = 0 (plane wave), 1 (spherical wave), 2 (ADF)")
@@ -168,7 +175,7 @@ def main():
     an = antenna_set(data_dir+'/coord_antennas.txt')
     # Read coincidences (antenna index, coincidence index, peak time, peak amplitude)
     # Routine only keep valid number of antennas (>3)
-    co = coincidence_set(data_dir+'/Rec_coinctable.txt',an)
+    co = coincidence_set(data_dir+'/Rec_coinctable_simulated.txt',an)
     print("Number of coincidences = ",co.ncoincs)
     # Initialize reconstruction
     st = setup(data_dir,recons_type)
@@ -176,13 +183,14 @@ def main():
     if (st.recons_type==0):
         # PWF model. We do not assume any prior analysis was done.
         for current_recons in range(co.ncoincs):
-            params_in = [3.*np.pi/4,np.pi]
-            # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
+            bounds = ((np.pi/2+1e-7,np.pi),(0,2*np.pi))
+            params_in = np.array(bounds).mean(axis=1)
+            # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
-            res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
-            #res = so.minimize(PWF_loss,params_in,jac=PWF_grad,args=args,method='BFGS')
-            #res = so.minimize(PWF_loss,params_in,args=args,method='Powell', bounds=[[np.pi/2.,np.pi],[0.,2*np.pi]])
+            # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
+            # res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
+            res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='BFGS')
             #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
             
             params_out = res.x
@@ -198,6 +206,7 @@ def main():
             if (st.compute_errors):
                 print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
             print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
+            params_out[0]=no_periodicity(params_out[0])
             #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
             # Write down results to file
             st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
@@ -220,13 +229,20 @@ def main():
                       [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
             params_in = np.array(bounds).mean(axis=1)
             print("params_in = ",params_in)
+            print("bounds = ", bounds)
 
-            # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True)
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
+            # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
-            # res = so.minimize(SWF_loss,params_in,args=args,method='L-BFGS-B',bounds=bounds)
-            res = so.minimize(SWF_loss,params_in,args=args,method='BFGS')
-            #res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+            # Test value of gradient, compare to finite difference estimate
+            # print(nd.Gradient(SWF_loss,order=4)(params_in,*args))
+            # print(SWF_grad(params_in,*args))
+            method = 'L-BFGS-B'
+            print('Minimize using %s'%method)
+            res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
+            print('xxxxx')
+            res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='BFGS',options={'maxiter':400})
+            # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
             params_out = res.x
 
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
@@ -238,7 +254,12 @@ def main():
                 errors = np.array([np.nan]*2)      
 
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
+            print ("Chi2 at best fit = ",SWF_loss(params_out,*args,True))
+            
+            # Compute gradient with SWF_grad and compare to finite difference estimate
+            # print(nd.Gradient(SWF_loss)(params_out,*args))
+            # print(SWF_grad(params_out,*args))
+
             #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
             # Write down results to file 
             st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args))
