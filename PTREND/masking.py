@@ -15,17 +15,22 @@ class Make_mask:
         
         
         
-	def write_masked_coincidence_file(self, triggered_an_index.astype(int),triggered_event_id.astype(int), triggered_peak_time.astype(float), triggered_amp_array.astype(float), masked_output_file):
+	def write_masked_coincidence_file(self, triggered_an_index,triggered_event_id, triggered_peak_time, triggered_amp_array, masked_output_file):
     #(self, triggered_an_index,triggered_event_id, triggered_peak_time, triggered_amp_array, masked_output_file)
 		f = open(masked_output_file, 'w')
 		#f.write("%12.0le %12.0le %12.10le %12.10le \n"%(triggered_an_index,triggered_event_id, triggered_peak_time, triggered_amp_array ))
 		#this one works but not the way I would like it to be :D
 		#f.write("{} {} {} {}\n".format(triggered_an_index, triggered_event_id, triggered_peak_time,triggered_amp_array))
-		np.savetxt(f,  np.transpose([triggered_an_index.astype(int),triggered_event_id.astype(int), triggered_peak_time.astype(float), triggered_amp_array.astype(float)]))
+		#np.savetxt(f,  np.transpose([triggered_an_index.astype(int), triggered_event_id.astype(int), triggered_peak_time.astype(float), triggered_amp_array.astype(float)]))
+		
+		
+		for i in range(len(triggered_an_index)):
+			f.write("{0:<4d} {1:<10d} {2:<12.10g} {3:<12.10g}\n".format(triggered_an_index[i], triggered_event_id[i],triggered_peak_time[i]/c_light, triggered_amp_array[i] ))
+		f.close()
 		
         
         
-	def __call__(self, shower_center = [0,0], r = 2000, number_of_sets = 100):
+	def __call__(self, shower_center = [0,0], r = 6000, number_of_sets = 100):
 		#number_of_sets is the same as in simpulation input
 		self.shower_center = shower_center
 		self.r = r
@@ -52,12 +57,10 @@ class Make_mask:
 		triggered_amp_array = triggered_amp_array.flatten()
 		#params = np.array([triggered_an_index.astype(int),triggered_event_id.astype(int), triggered_peak_time.astype(float), triggered_amp_array.astype(float)]).T
 
-        
+
 
 		self.write_masked_coincidence_file(triggered_an_index.astype(int),triggered_event_id.astype(int), triggered_peak_time.astype(float), triggered_amp_array.astype(float), self.masked_output_file)
-		print(params)
-        
-        
+		#print(params)
 
 
 		return 
