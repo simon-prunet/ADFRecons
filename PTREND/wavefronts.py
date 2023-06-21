@@ -342,7 +342,7 @@ def PWF_loss_nonp(params, Xants, tants, verbose=False, cr=1.0):
 ###################################################
 
 @njit(**kwd,parallel=False)
-def SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
+def SWF_loss(params, Xants, tants, verbose=False, log = False, cr=1.0):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
@@ -360,7 +360,15 @@ def SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
     cr is the radiation speed in medium, by default 1 since time is expressed in m.
     '''
 
-    theta, phi, r_xmax, t_s = params
+
+    if (log is True):
+        # Pass r_xmax+t_s, np.log10(r_xmax - t_s) instead of r_xmax, t_s
+        theta, phi, sm, logdf = params
+        df = 10.**logdf
+        r_xmax = (df+sm)/2.
+        t_s    = (-df+sm)/2.
+    else:
+        theta, phi, r_xmax, t_s = params
     nants = tants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
@@ -387,6 +395,10 @@ def SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
         print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
         print ("Chi2 = ",chi2)
     return(chi2)
+
+@njit(**kwd,parallel=False)
+def log_SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
+    return np.log10(SWF_loss(params,Xants,tants,verbose=verbose,cr=1.0))
 
 
 @njit(**kwd)
