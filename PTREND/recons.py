@@ -297,6 +297,16 @@ def main():
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
             print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
             # print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+            #print('adf', ADF_simulation(params_out,*args))
+            adf_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/adfanalytic.txt"
+            with open(adf_analytic, "w") as fichier:
+                for valeur in ADF_simulation(params_out,*args):
+                    fichier.write(str(valeur) + "\n")
+            omega_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/omegaanalytic.txt"
+            with open(omega_analytic, "w") as fichier:
+                for valeur in function_omega(params_out,*args):
+                    fichier.write(str(valeur) + "\n")
+            print('omega', function_omega(params_out,*args))
             st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args))
 
             return
