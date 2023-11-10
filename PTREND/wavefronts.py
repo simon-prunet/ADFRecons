@@ -234,6 +234,24 @@ def PWF_loss(params, Xants, tants, verbose=False, cr=1.0):
         print("Chi2 = ",chi2)
     return(chi2)
 
+def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
+    '''
+    Defines Chi2 by summing model residuals over individual antennas,
+    after maximizing likelihood over reference time.
+    '''
+    theta,phi = params
+    nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    # Make sure tants and Xants are compatible
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
+        return None
+    xk = np.dot(Xants, K)
+    ct0 = 1./nants * (cr*tants-xk).sum()
+    chi2 = ((cr*tants-ct0-xk)**2).sum()
+    return(chi2)
+
 def PWF_grad(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
