@@ -517,6 +517,7 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     mat = np.vstack((KxB,KxKxB,K))
     # 
     XmaxDist = (groundAltitude-Xmax[2])/K[2]
+    
     # print('XmaxDist = ',XmaxDist)
     asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\alpha)
     #

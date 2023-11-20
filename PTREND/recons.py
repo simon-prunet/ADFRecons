@@ -342,6 +342,7 @@ def main():
                     file = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a')
                     lines_copy = lines[current_recons]
                     file.writelines(lines_copy)
+                    file.close()
                     #pro_time = time.process_time() #processor time in s
                     end_time = time.time()
                     sphere_time = end_time - begining_time
@@ -371,37 +372,41 @@ def main():
         #co.ncoins == len(fid_input_angles)
         #for current_recons in range(co.ncoincs):
         for current_recons in range(len(length_data)):
-            begining_time = time.time()
-        #for current_recons in range(len(fid_input_angles)):
-            # Read angles obtained with PWF reconstruction
-            l = fid_input_angles.readline().strip().split()
-            theta_in = float(l[2])
-            phi_in   = float(l[4])
-            l = fid_input_xmax.readline().strip().split()
-            Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
-            bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
-                      [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
-                      [0.1,3.0],
-                      [1e6,1e10]]
-            params_in = np.array(bounds).mean(axis=1) # Central values
-            ## Refine guess for amplitude, based on maximum of peak values ##
-            lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
-            params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
-            print ('amp_guess = ',params_in[3])
-            ###################
-            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax, 0.01, False)
-            # res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
-            #                   method='L-BFGS-B')#, bounds=bounds)
-            res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
-            #print (res)
-            params_out = res.x
-            # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
-            # hess = nd.Hessian(ADF_loss)(params_out,*args)
-            # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
-            errors = np.array([np.nan]*4)
-            print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
-            print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+            try:
+                begining_time = time.time()
+            #for current_recons in range(len(fid_input_angles)):
+                # Read angles obtained with PWF reconstruction
+                l = fid_input_angles.readline().strip().split()
+                theta_in = float(l[2])
+                phi_in   = float(l[4])
+                l = fid_input_xmax.readline().strip().split()
+                Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
+                bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
+                        [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
+                        [0.1,3.0],
+                        [1e6,1e10]]
+                params_in = np.array(bounds).mean(axis=1) # Central values
+                ## Refine guess for amplitude, based on maximum of peak values ##
+                #if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
+                #    st.write_adf(st.outfile, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1)
+                #else:
+                lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
+                params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
+                print ('amp_guess = ',params_in[3])
+                ###################
+                args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax, 0.01, False)
+                #res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
+                #                   method='L-BFGS-B')#, bounds=bounds)
+                res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
+                #print (res)
+                params_out = res.x
+                # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
+                # hess = nd.Hessian(ADF_loss)(params_out,*args)
+                # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+                errors = np.array([np.nan]*4)
+                print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+                print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
+                print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
             #adf_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/adfanalytic.txt"
             #with open(adf_analytic, "w") as fichier:
             #    for valeur in ADF_simulation(params_out,*args):
@@ -412,9 +417,12 @@ def main():
             #        fichier.write(str(valeur) + "\n")
             #print('omega', function_omega(params_out,*args))
             #pro_time = time.process_time() #processor time in s
-            end_time = time.time()
-            adf_time = end_time - begining_time
-            st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args), adf_time)
+                end_time = time.time()
+                adf_time = end_time - begining_time
+                st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args), adf_time)
+            except ZeroDivisionError as erreur:
+                st.write_adf(st.outfile, -1, -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                print("Une division par zéro a été détectée :", erreur)
 
         return
 
