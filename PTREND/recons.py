@@ -6,8 +6,13 @@ import scipy.optimize as so
 import numdifftools as nd
 from emcee import EnsembleSampler
 import time
+import signal
 
 c_light = 2.997924580e8
+
+def handler(signum, frame):
+    raise TimeoutError("Le temps limite est dépassé.")
+signal.signal(signal.SIGALRM, handler)
 
 def logprob(angles, coords, times):
     return -0.5*PWF_loss(angles, coords, times)
@@ -270,94 +275,92 @@ def main():
         #theta_reconstructed = plane_parameters[:,2]
         #print('theta_recons', theta_reconstructed)
         j=0
+        timeout = 200
         for current_recons in range(co.ncoincs):
+                signal.alarm(timeout)
                 begining_time = time.time()
-            #theta_reconstructed is exactly on the bounds : the plane wave fit failed
-            #if theta_reconstructed[current_recons] == np.rad2deg(np.pi/2) or theta_reconstructed[current_recons] == np.rad2deg(np.pi):
-            #    print(theta_reconstructed[current_recons])
-            #     with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') as file:
-            #         file.write( '-1 \n')
-            #     with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a') as filebis:
-            #        print('coucou')
-            #        filebis.write('-1 \n')
-            #     st.write_xmax(st.outfile,-1, -1, [-1, -1, -1, -1], -1)
-            #     j+=1
-            #     print(j)
-            #else:
-                #try:
+                try:
                     # Read angles obtained with PWF reconstruction
-                l = fid_input_angles.readline().strip().split()
-                if l != 'nan':
-                    theta_in = float(l[2])
-                if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
+                    l = fid_input_angles.readline().strip().split()
+                    if l != 'nan':
+                        theta_in = float(l[2])
+                    if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
+                        params_in = [-1, -1, -1, -1]
+                        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') as file:
+                            file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
+                        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a') as filebis:
+                            filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
+                        st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)
+                    else:
+                        print('theta_in', theta_in)
+                        phi_in   = float(l[4])
+                        bounds = [[np.deg2rad(theta_in-2),np.deg2rad(theta_in+2)],
+                                [np.deg2rad(phi_in-2),np.deg2rad(phi_in+2)], 
+                                [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
+                                [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+                        params_in = np.array(bounds).mean(axis=1)
+                        print("params_in = ",params_in)
+                        print("bounds = ", bounds)
+
+                        args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],False)
+                        # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+
+                        # Test value of gradient, compare to finite difference estimate
+                        # print(nd.Gradient(SWF_loss,order=4)(params_in,*args))
+                        # print(SWF_grad(params_in,*args))
+                        method = 'L-BFGS-B'
+                        print('Minimize using %s'%method)
+                        res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
+                        print('xxxxx')
+                        res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
+                        # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+                        params_out = res.x
+                
+
+
+                        # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
+                        if (st.compute_errors):
+                            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+                            hess = nd.Hessian(SWF_loss)(params_out,*args)
+                            errors = np.sqrt(np.diag(np.linalg.inv(hessian)))
+                        else:
+                            errors = np.array([np.nan]*2)      
+
+                        print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+                        print ("Chi2 at best fit = ",SWF_loss(params_out,*args,False))
+            
+                        # Compute gradient with SWF_grad and compare to finite difference estimate
+                        # print(nd.Gradient(SWF_loss)(params_out,*args))
+                        # print(SWF_grad(params_out,*args))
+
+                        #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
+                        # Write down results to file 
+                        filebis = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') 
+                        linebis_copy = linebis[current_recons]
+                        filebis.writelines(linebis_copy)
+                        filebis.close()
+                        file = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a')
+                        lines_copy = lines[current_recons]
+                        file.writelines(lines_copy)
+                        file.close()
+                        #pro_time = time.process_time() #processor time in s
+                        end_time = time.time()
+                        sphere_time = end_time - begining_time
+                        st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args), sphere_time)
+                        i+=1
+                        print(i)
+
+                except TimeoutError as e:
+                    print("error !!!!!!!!!!", e) 
                     params_in = [-1, -1, -1, -1]
                     with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') as file:
                         file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
                     with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a') as filebis:
                         filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                    st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)
-                else:
-                    print('theta_in', theta_in)
-                    phi_in   = float(l[4])
-                    bounds = [[np.deg2rad(theta_in-2),np.deg2rad(theta_in+2)],
-                            [np.deg2rad(phi_in-2),np.deg2rad(phi_in+2)], 
-                            [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
-                            [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
-                    params_in = np.array(bounds).mean(axis=1)
-                    print("params_in = ",params_in)
-                    print("bounds = ", bounds)
-
-                    args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],False)
-                    # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-
-                    # Test value of gradient, compare to finite difference estimate
-                    # print(nd.Gradient(SWF_loss,order=4)(params_in,*args))
-                    # print(SWF_grad(params_in,*args))
-                    method = 'L-BFGS-B'
-                    print('Minimize using %s'%method)
-                    res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
-                    print('xxxxx')
-                    res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
-                    # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
-                    params_out = res.x
-                
-
-
-                    # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
-                    if (st.compute_errors):
-                        args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-                        hess = nd.Hessian(SWF_loss)(params_out,*args)
-                        errors = np.sqrt(np.diag(np.linalg.inv(hessian)))
-                    else:
-                        errors = np.array([np.nan]*2)      
-
-                    print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-                    print ("Chi2 at best fit = ",SWF_loss(params_out,*args,False))
-            
-                    # Compute gradient with SWF_grad and compare to finite difference estimate
-                    # print(nd.Gradient(SWF_loss)(params_out,*args))
-                    # print(SWF_grad(params_out,*args))
-
-                    #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
-                    # Write down results to file 
-                    filebis = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') 
-                    linebis_copy = linebis[current_recons]
-                    filebis.writelines(linebis_copy)
-                    filebis.close()
-                    file = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a')
-                    lines_copy = lines[current_recons]
-                    file.writelines(lines_copy)
-                    file.close()
-                    #pro_time = time.process_time() #processor time in s
-                    end_time = time.time()
-                    sphere_time = end_time - begining_time
-                    st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args), sphere_time)
-                    i+=1
-                    #print(i)
-
-            #except Exception as e:
-            #    print("error !!!!!!!!!!", e)                
-            #    continue
+                    st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)               
+                    continue
+                finally:
+                    signal.alarm(0) 
 
 
     if (st.recons_type==2):
