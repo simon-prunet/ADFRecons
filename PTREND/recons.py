@@ -12,6 +12,9 @@ c_light = 2.997924580e8
 def logprob(angles, coords, times):
     return -0.5*PWF_loss(angles, coords, times)
 
+def logprob_alternate(angles, coords, times):
+    return -0.5*PWF_alternate_loss(angles, coords, times)
+
 def MCMC_minimizer(logprob, args):
     ndim, nwalkers = 2, 10
     sampler = EnsembleSampler(nwalkers, ndim, logprob, args=args)
@@ -210,16 +213,17 @@ def main():
                 # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
                 #res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
                 #res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='Nelder-Mead')
+                #params_out = res.x
                 #print(res.success)
 
-                res = MCMC_minimizer(logprob, args=args)
+                #res = MCMC_minimizer(logprob, args=args)
+                res = MCMC_minimizer(logprob_alternate, args=args)
                 params_out = res
                 #theta = params_out[0]
                 #phi = params_out[1]
                 #file.write(f"{np.rad2deg(theta):.1f} {np.rad2deg(phi):.1f}\n")
                 #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
             
-                #params_out = res.x
                 #array_paramsout.append(params_out)
                 #print('params_out', params_out[0])
                 #print('bounds', bounds [0][0])
@@ -262,9 +266,9 @@ def main():
             file_input.write('')
         with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'w') as file_recons:
             file_recons.write('')
-        plane_parameters = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt')
-        theta_reconstructed = plane_parameters[:,2]
-        print('theta_recons', theta_reconstructed)
+        #plane_parameters = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt')
+        #theta_reconstructed = plane_parameters[:,2]
+        #print('theta_recons', theta_reconstructed)
         j=0
         for current_recons in range(co.ncoincs):
                 begining_time = time.time()
@@ -286,11 +290,12 @@ def main():
                 if l != 'nan':
                     theta_in = float(l[2])
                 if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
+                    params_in = [-1, -1, -1, -1]
                     with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') as file:
-                        file.write( '-1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
+                        file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
                     with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a') as filebis:
-                        filebis.write('-1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                    st.write_xmax(st.outfile,-1, -1, [-1, -1, -1, -1], -1, -1)
+                        filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
+                    st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)
                 else:
                     print('theta_in', theta_in)
                     phi_in   = float(l[4])
@@ -365,13 +370,13 @@ def main():
             return
         #fid_input_angles = open(st.input_angles_file,"r")
         #fid_input_xmax   = open(st.input_xmax_file,"r")
-        fid_input_angles = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons_sphereanalysis.txt',"r")
-        fid_input_xmax   = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_sphere_wave_recons_sphereanalysis.txt',"r")
-        data = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons_sphereanalysis.txt')
+        fid_input_angles = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt',"r")
+        fid_input_xmax   = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_sphere_wave_recons.txt',"r")
+        data = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt')
         length_data = data[:,0]
         #co.ncoins == len(fid_input_angles)
-        #for current_recons in range(co.ncoincs):
-        for current_recons in range(len(length_data)):
+        for current_recons in range(co.ncoincs):
+        #for current_recons in range(len(length_data)):
             try:
                 begining_time = time.time()
             #for current_recons in range(len(fid_input_angles)):
@@ -379,49 +384,52 @@ def main():
                 l = fid_input_angles.readline().strip().split()
                 theta_in = float(l[2])
                 phi_in   = float(l[4])
-                l = fid_input_xmax.readline().strip().split()
-                Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
-                bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
-                        [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
-                        [0.1,3.0],
-                        [1e6,1e10]]
-                params_in = np.array(bounds).mean(axis=1) # Central values
-                ## Refine guess for amplitude, based on maximum of peak values ##
-                #if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
-                #    st.write_adf(st.outfile, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1)
-                #else:
-                lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
-                params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
-                print ('amp_guess = ',params_in[3])
-                ###################
-                args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax, 0.01, False)
-                #res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
-                #                   method='L-BFGS-B')#, bounds=bounds)
-                res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
-                #print (res)
-                params_out = res.x
-                # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
-                # hess = nd.Hessian(ADF_loss)(params_out,*args)
-                # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
-                errors = np.array([np.nan]*4)
-                print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-                print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
-                print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
-            #adf_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/adfanalytic.txt"
-            #with open(adf_analytic, "w") as fichier:
-            #    for valeur in ADF_simulation(params_out,*args):
-            #        fichier.write(str(valeur) + "\n")
-            #omega_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/omegaanalytic.txt"
-            #with open(omega_analytic, "w") as fichier:
-            #    for valeur in function_omega(params_out,*args):
-            #        fichier.write(str(valeur) + "\n")
-            #print('omega', function_omega(params_out,*args))
-            #pro_time = time.process_time() #processor time in s
-                end_time = time.time()
-                adf_time = end_time - begining_time
-                st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args), adf_time)
+                if theta_in  == -1:
+                    st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                else:
+                    l = fid_input_xmax.readline().strip().split()
+                    Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
+                    bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
+                            [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
+                            [0.1,3.0],
+                            [1e6,1e10]]
+                    params_in = np.array(bounds).mean(axis=1) # Central values
+                    ## Refine guess for amplitude, based on maximum of peak values ##
+                    #if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
+                    #    st.write_adf(st.outfile, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1)
+                    #else:
+                    lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
+                    params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
+                    print ('amp_guess = ',params_in[3])
+                    ###################
+                    args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax, 0.01, False)
+                    #res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
+                    #                   method='L-BFGS-B')#, bounds=bounds)
+                    res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
+                    #print (res)
+                    params_out = res.x
+                    # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
+                    # hess = nd.Hessian(ADF_loss)(params_out,*args)
+                    # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
+                    errors = np.array([np.nan]*4)
+                    print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+                    print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
+                    print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+                #adf_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/adfanalytic.txt"
+                #with open(adf_analytic, "w") as fichier:
+                #    for valeur in ADF_simulation(params_out,*args):
+                #        fichier.write(str(valeur) + "\n")
+                #omega_analytic = "/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/omegaanalytic.txt"
+                #with open(omega_analytic, "w") as fichier:
+                #    for valeur in function_omega(params_out,*args):
+                #        fichier.write(str(valeur) + "\n")
+                #print('omega', function_omega(params_out,*args))
+                #pro_time = time.process_time() #processor time in s
+                    end_time = time.time()
+                    adf_time = end_time - begining_time
+                    st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args), adf_time)
             except ZeroDivisionError as erreur:
-                st.write_adf(st.outfile, -1, -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
                 print("Une division par zéro a été détectée :", erreur)
 
         return
