@@ -214,6 +214,7 @@ def main():
                 params_in = np.array(bounds).mean(axis=1)
                 # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
                 args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+                #print(args)
 
                 # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
                 #res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
@@ -221,8 +222,8 @@ def main():
                 #params_out = res.x
                 #print(res.success)
 
-                #res = MCMC_minimizer(logprob, args=args)
-                res = MCMC_minimizer(logprob_alternate, args=args)
+                res = MCMC_minimizer(logprob, args=args)
+                #res = MCMC_minimizer(logprob_alternate, args=args)
                 params_out = res
                 #theta = params_out[0]
                 #phi = params_out[1]
@@ -375,8 +376,8 @@ def main():
         #fid_input_xmax   = open(st.input_xmax_file,"r")
         fid_input_angles = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt',"r")
         fid_input_xmax   = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_sphere_wave_recons.txt',"r")
-        data = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt')
-        length_data = data[:,0]
+        #data = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt')
+        #length_data = data[:,0]
         #co.ncoins == len(fid_input_angles)
         for current_recons in range(co.ncoincs):
         #for current_recons in range(len(length_data)):
