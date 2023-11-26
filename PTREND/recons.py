@@ -10,17 +10,25 @@ import signal
 
 c_light = 2.997924580e8
 
+#output_directory = '/sps/grand/mguelfand/DC2/output_recons_ADF/'
+output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
+
 def handler(signum, frame):
     raise TimeoutError("Le temps limite est dépassé.")
 signal.signal(signal.SIGALRM, handler)
 
-def logprob(angles, coords, times):
-    return -0.5*PWF_loss(angles, coords, times)
+#def logprob(angles, coords, times):
+#    return -0.5*PWF_loss(angles, coords, times)
 
-def logprob_alternate(angles, coords, times):
-    return -0.5*PWF_alternate_loss(angles, coords, times)
+def logprob(angles, *args):
+    return -0.5*PWF_loss(angles, *args)
+
+def logprob_alternate(angles, *args):
+    return -0.5*PWF_alternate_loss(angles, *args)
+
 
 def MCMC_minimizer(logprob, args):
+    #np.random.seed(42)
     ndim, nwalkers = 2, 10
     sampler = EnsembleSampler(nwalkers, ndim, logprob, args=args)
     thetas = np.random.rand(10)*np.pi/2 + np.pi/2
@@ -30,9 +38,13 @@ def MCMC_minimizer(logprob, args):
     sampler.reset()
     sampler.run_mcmc(state, 10000)
     samples = sampler.get_chain(flat=True, thin=25)
-    logprobs = sampler.get_log_prob(flat=True, thin=25)
+    #print(samples)
+    #logprobs = sampler.get_log_prob(flat=True, thin=25)
     mask= (samples[:,0]>np.pi/2)*(samples[:,0]<np.pi)*(samples[:,1]>0)*(samples[:,1]<2*np.pi)
     med = np.median(samples[mask,:], axis=0)
+    #med = np.median(samples, axis=0)
+    #print(thetas, phis)
+    #print(np.rad2deg(med))
     return med
 
 class antenna_set:
@@ -93,7 +105,7 @@ class coincidence_set:
                 self.nantsmax = np.maximum(self.nantsmax, current_length)
                 self.ncoincs += 1
 
-        # print(self.nants,self.ncoincs)
+        #print(self.nants,self.ncoincs)
         # Now create the structure and populate it
         self.antenna_index_array = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
         self.antenna_coords_array= np.zeros((self.ncoincs,self.nantsmax,3))
@@ -112,9 +124,11 @@ class coincidence_set:
                 # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
                 self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.ant_set.init_ant
                 self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:] = self.ant_set.coordinates[antenna_index_array[mask]]
+                #print(len(self.antenna_coords_array[current_coinc,:self.nants[current_coinc],:]))
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
+                print(len(self.peak_time_array[current_coinc,:self.nants[current_coinc]]))
                 #self.peak_time_array[current_coinc,:self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc,:self.nants[current_coinc]])
                 self.peak_amp_array[current_coinc,:self.nants[current_coinc]] = peak_amp_array[mask]
                 current_coinc += 1
@@ -213,7 +227,11 @@ def main():
                 #bounds = ((np.pi/2+1e-7,np.pi),(np.deg2rad(20), np.deg2rad(200)))
                 params_in = np.array(bounds).mean(axis=1)
                 # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
-                args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+                args=(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
+                #args = (co.antenna_coords_array[current_recons,:], co.peak_time_array[current_recons,:])
+                #print(len(co.antenna_coords_array[current_recons,:]))
+                print('args!!!!', (args[1]/c_light))
+                #while args
                 #print(args)
 
                 # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
@@ -222,8 +240,8 @@ def main():
                 #params_out = res.x
                 #print(res.success)
 
-                res = MCMC_minimizer(logprob, args=args)
-                #res = MCMC_minimizer(logprob_alternate, args=args)
+                #res = MCMC_minimizer(logprob, args=args)
+                res = MCMC_minimizer(logprob_alternate, args=args)
                 params_out = res
                 #theta = params_out[0]
                 #phi = params_out[1]
@@ -238,7 +256,7 @@ def main():
                
                 if (st.compute_errors):
                     args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-                    hess = nd.Hessian(PWF_loss) (params_out,*args)
+                    hess = nd.Hessian(PWF_alternate_loss) (params_out,*args)
                     errors = np.sqrt(np.diag(np.linalg.inv(hess)))
                 else:
                     errors = np.array([np.nan]*2)
@@ -246,14 +264,14 @@ def main():
                 ## Errors computation needs work: errors are coming both from noise on amplitude and time measurements
                 if (st.compute_errors):
                     print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
-                print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
+                print ("Chi2 at best fit = ",PWF_alternate_loss(params_out,*args))
                 #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
                 #pro_time = time.process_time() #processor time in s
                 end_time = time.time()
                 plane_time = end_time - begining_time
                 # Write down results to file
                 st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
-                    np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args), plane_time)
+                    np.rad2deg(params_out),np.rad2deg(errors),PWF_alternate_loss(params_out,*args), plane_time)
     #print('params_out !!!!!!!!!', array_paramsout)
 
     if (st.recons_type==1):
@@ -264,13 +282,13 @@ def main():
         fid_input_angles = open(st.input_angles_file,'r')
         #fid_input_angles_bis = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus.txt', 'r')
         i=0
-        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus.txt', 'r') as file:
+        with open(f'{output_directory}input_simus.txt', 'r') as file:
             lines = file.readlines()
-        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt', 'r') as filebis:
+        with open(f'{output_directory}Rec_plane_wave_recons.txt', 'r') as filebis:
             linebis = filebis.readlines()
-        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'w') as file_input:
+        with open(f'{output_directory}input_simus_bis.txt', 'w') as file_input:
             file_input.write('')
-        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'w') as file_recons:
+        with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'w') as file_recons:
             file_recons.write('')
         #plane_parameters = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt')
         #theta_reconstructed = plane_parameters[:,2]
@@ -287,9 +305,9 @@ def main():
                         theta_in = float(l[2])
                     if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
                         params_in = [-1, -1, -1, -1]
-                        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') as file:
+                        with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
                             file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                        with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a') as filebis:
+                        with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
                             filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
                         st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)
                     else:
@@ -313,7 +331,7 @@ def main():
                         print('Minimize using %s'%method)
                         res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
                         print('xxxxx')
-                        res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
+                        #res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
                         # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
                         params_out = res.x
                 
@@ -336,11 +354,11 @@ def main():
 
                         #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
                         # Write down results to file 
-                        filebis = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') 
+                        filebis = open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') 
                         linebis_copy = linebis[current_recons]
                         filebis.writelines(linebis_copy)
                         filebis.close()
-                        file = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a')
+                        file = open(f'{output_directory}input_simus_bis.txt', 'a')
                         lines_copy = lines[current_recons]
                         file.writelines(lines_copy)
                         file.close()
@@ -354,9 +372,9 @@ def main():
                 except TimeoutError as e:
                     print("error !!!!!!!!!!", e) 
                     params_in = [-1, -1, -1, -1]
-                    with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt', 'a') as file:
+                    with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
                         file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                    with open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', 'a') as filebis:
+                    with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
                         filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
                     st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)               
                     continue
@@ -374,8 +392,8 @@ def main():
             return
         #fid_input_angles = open(st.input_angles_file,"r")
         #fid_input_xmax   = open(st.input_xmax_file,"r")
-        fid_input_angles = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt',"r")
-        fid_input_xmax   = open('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_sphere_wave_recons.txt',"r")
+        fid_input_angles = open(f'{output_directory}Rec_plane_wave_reconsbis.txt',"r")
+        fid_input_xmax   = open(f'{output_directory}Rec_sphere_wave_recons.txt',"r")
         #data = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_reconsbis.txt')
         #length_data = data[:,0]
         #co.ncoins == len(fid_input_angles)

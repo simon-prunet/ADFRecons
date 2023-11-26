@@ -13,11 +13,15 @@ import random
 ################################################################################
 #Paths
 
-file_coord = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/coord_antennas.txt'
+#file_coord = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/coord_antennas.txt'
 file_input_simu = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus.txt'
 file_recons = '/Users/mguelfan/Documents/GRAND/ADF_DC2/ADFRecons/PTREND/recons.py'
 output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
 output_simu = '/Users/mguelfan/Documents/GRAND/ADF_DC2/simus/'
+#file_input_simu = '/sps/grand/mguelfand/DC2/output_recons_ADF/input_simus.txt'
+#file_recons = '/sps/grand/mguelfand/DC2/ADFRecons/PTREND/recons.py'
+#output_directory = '/sps/grand/mguelfand/DC2/output_recons_ADF/'
+#output_simu = '/sps/grand/tueros/DiscreteStshpLibraryDunhuang2022/StshpOutbox/'
 #############################
 #############################       
 
@@ -29,8 +33,14 @@ def EventNumber(input_directory):
         eventnumber = [eventnumber.rstrip('/')]
     d_event = ZhairesMaster(input_directory)
     shower_parameters = d_event.get_simu_info()
+    if shower_parameters['primary'] == 'Proton':
+        shower_parameters['primary'] = 1
+    elif shower_parameters['primary'] == 'Iron':
+        shower_parameters['primary'] = 2
+    else:
+        shower_parameters['primary'] = 0
     #print(eventnumber[0])
-    event_id = float(str(int(shower_parameters['shower_zenith']))+str(int(shower_parameters['shower_azimuth']))+str(int(shower_parameters['energy']['value']))+str(int(eventnumber[0])))
+    event_id = float(str(int(shower_parameters['primary']))+str(int(shower_parameters['shower_zenith']*10))+str(int(shower_parameters['shower_azimuth']))+str(int(shower_parameters['energy']['value']*100))+str(int(eventnumber[0])))
     return event_id
 
 def GetSimulationReconstructionParameters(input_directory, antennathreshold, amplitudethreshold):
@@ -96,7 +106,13 @@ def read_dictionnary(input_directory, amplitudethreshold):
         shower_parameters['primary'] = 2
     else:
         shower_parameters['primary'] = 0
-    input_simu = np.array([event_id, shower_parameters['shower_zenith'], shower_parameters['shower_azimuth'], shower_parameters['energy']['value'], shower_parameters['primary'], shower_parameters['x_max']['dist']*1e3, shower_parameters['sl_depth_of_max']['mean'], shower_parameters['x_max']['x']*1e3, shower_parameters['x_max']['y']*1e3, shower_parameters['x_max']['z']*1e3, len(idx)]).T
+    if shower_parameters['energy']['unit'] == 'EeV':
+        shower_parameters['energy']['unit'] = 1
+    elif shower_parameters['energy']['unit'] == 'PeV':
+        shower_parameters['energy']['unit'] = 2
+    else:
+        shower_parameters['energy']['unit'] = 0
+    input_simu = np.array([event_id, shower_parameters['shower_zenith'], shower_parameters['shower_azimuth'], shower_parameters['energy']['value'], shower_parameters['primary'], shower_parameters['x_max']['dist']*1e3, shower_parameters['sl_depth_of_max']['mean'], shower_parameters['x_max']['x']*1e3, shower_parameters['x_max']['y']*1e3, shower_parameters['x_max']['z']*1e3, len(idx), shower_parameters['energy']['unit']]).T
     return input_simu
 
 def WriteInputSimu(file_path, shower_input_all):
@@ -105,6 +121,7 @@ def WriteInputSimu(file_path, shower_input_all):
     zenith = shower_input_all[:,1]
     azimuth = shower_input_all[:,2]
     energy = shower_input_all[:,3]
+    energy_unit = shower_input_all[:,11]
     primary = shower_input_all[:,4]
     xmax_dist = shower_input_all[:,5]
     xmax_slant = shower_input_all[:,6]
@@ -114,16 +131,17 @@ def WriteInputSimu(file_path, shower_input_all):
     number_antennas = shower_input_all[:,10]
     with open(file_path, 'w') as file:
         for i in range(len(fake_idx)):
-            file.write(f" {event_id[i]} {zenith[i]} {azimuth[i]} {energy[i]} {primary[i]} {xmax_dist[i]} {xmax_slant[i]} {xmax_x[i]} {xmax_y[i]} {xmax_z[i]} {number_antennas[i]} \n")
+            file.write(f" {event_id[i]} {zenith[i]} {azimuth[i]} {energy[i]} {primary[i]} {xmax_dist[i]} {xmax_slant[i]} {xmax_x[i]} {xmax_y[i]} {xmax_z[i]} {number_antennas[i]} {energy_unit[i]} \n")
     with open(file_path, 'r') as file:
         lines = file.readlines()
     lines_sorted = sorted (lines, key = lambda lines: float(lines.split()[0]))
     with open(file_path, 'w') as file_sorted:
-        file_sorted.writelines(lines_sorted)        
+        file_sorted.writelines(lines_sorted)
+    return 0       
 
 #read_dictionnary(input_directory, file_path, file_coord)
 
-sample_files = random.sample(glob.glob(output_simu+'*'), 10)
+sample_files = random.sample(glob.glob(output_simu+'*'), 30)
 
 filename_position = "coord_antennas.txt"
 filename_arrivaltime = 'Rec_coinctable.txt'
@@ -136,17 +154,26 @@ event_all = []
 shower_input_all =[]
 #for simus in glob.glob(output_simu+'*'):
 for simus in sample_files:
-    hdf5_files = [file for file in os.listdir(simus) if file.endswith('.hdf5')]
-    if hdf5_files and GetSimulationReconstructionParameters(simus+'/', antennathreshold, amplitudethreshold)[2] != -1:
-        #print(simus)
-        parameters = GetSimulationReconstructionParameters(simus+'/', antennathreshold, amplitudethreshold)[0]
-        antenna_params_all.append(parameters)
-        shower_input = read_dictionnary(simus+'/', amplitudethreshold)
-        shower_input_all.append(shower_input)
-        #print(shower_input_all)
-        #print(antenna_params_all[0][2,0])
-    else:
+    try:
+        hdf5_files = [file for file in os.listdir(simus) if file.endswith('.hdf5')]
+        if hdf5_files and GetSimulationReconstructionParameters(simus+'/', antennathreshold, amplitudethreshold)[2] != -1:
+            theta_simu = read_dictionnary(simus+'/', amplitudethreshold)[1]
+            #print(read_dictionnary(simus+'/', amplitudethreshold)[3])
+            if theta_simu > 50:
+                #print(simus)
+                parameters = GetSimulationReconstructionParameters(simus+'/', antennathreshold, amplitudethreshold)[0]
+                antenna_params_all.append(parameters)
+                shower_input = read_dictionnary(simus+'/', amplitudethreshold)
+                shower_input_all.append(shower_input)
+                #print(shower_input_all)
+                #print(antenna_params_all[0][2,0])
+            else:
+                continue
+        else:
+            continue
+    except:
         continue
+
 antenna_params_all = np.vstack(antenna_params_all)
 shower_input_all = np.vstack(shower_input_all)
 WriteAntennaPositionTable(filename_position, output_directory, antenna_params_all) 
@@ -166,15 +193,15 @@ os.system('python3 ' + file_recons + ' 0 ' + output_directory)
 # 0) Load shower parameters
 
 # 1) Plane Wave Front Analysis
-tab_plane = pd.read_csv('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt', sep = '\s+', names=["IDsRec", "AntennaNumber", "ZenithRec", "_", "AzimuthRec", "nanan", "Chi2", "nanana", "time"])
+tab_plane = pd.read_csv(f'{output_directory}Rec_plane_wave_recons.txt', sep = '\s+', names=["IDsRec", "AntennaNumber", "ZenithRec", "_", "AzimuthRec", "nanan", "Chi2", "nanana", "time"])
 tab_plane['ZenithRec'].fillna(-1, inplace=True)
 tab_plane['AzimuthRec'].fillna(-1, inplace=True)
 tab_plane['Chi2'].fillna(-1, inplace=True)
 tab_plane['time'].fillna(-1, inplace=True)
 
-tab_plane.to_csv('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt', sep = ' ', index = False, header = False, na_rep='NaN')
+tab_plane.to_csv(f'{output_directory}Rec_plane_wave_recons.txt', sep = ' ', index = False, header = False, na_rep='NaN')
 
-tab_input = pd.read_csv('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus.txt', sep='\s+', names=["EventName", "Zenith", "Azimut", "Energy", "Primary", "XmaxDistance", "SlantXmax", "x_Xmax", "y_Xmax", "z_Xmax", "AntennasNumber"])
+tab_input = pd.read_csv(f'{output_directory}input_simus.txt', sep='\s+', names=["EventName", "Zenith", "Azimut", "Energy", "Primary", "XmaxDistance", "SlantXmax", "x_Xmax", "y_Xmax", "z_Xmax", "AntennasNumber"])
 indices = tab_plane.index[tab_plane['ZenithRec'] == -1].tolist()
 tab_input.loc[indices, 'Zenith'] = -1
 
@@ -187,16 +214,12 @@ os.system('python3 ' + file_recons + ' 1 ' + output_directory)
 
 os.system('python3 ' + file_recons + ' 2 ' + output_directory)
 
-tab_adf_rec = pd.read_csv('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_adf_recons.txt', sep = '\s+', names=["IDsRec", "nants", "ZenithRec", "nan", "AzimuthRec", "nanan", "Chi2", "nananan", "WidthRec", "AmpRec", "adf_time"])
-tab_input = pd.read_csv('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_bis.txt', sep='\s+', names=["EventName_bis", "Zenith_bis", "Azimuth_bis", "Energy_bis", "Primary_bis", "XmaxDistance_bis", "SlantXmax_bis", "x_Xmax_bis", "y_Xmax_bis", "z_Xmax_bis", "AntennasNumber_bis"])
+tab_adf_rec = pd.read_csv(f'{output_directory}Rec_adf_recons.txt', sep = '\s+', names=["IDsRec", "nants", "ZenithRec", "nan", "AzimuthRec", "nanan", "Chi2", "nananan", "WidthRec", "AmpRec", "adf_time"])
+tab_input = pd.read_csv(f'{output_directory}input_simus_bis.txt', sep='\s+', names=["EventName_bis", "Zenith_bis", "Azimuth_bis", "Energy_bis", "Primary_bis", "XmaxDistance_bis", "SlantXmax_bis", "x_Xmax_bis", "y_Xmax_bis", "z_Xmax_bis", "AntennasNumber_bis"])
 indices = tab_adf_rec.index[tab_adf_rec['nants'] == -1].tolist()
 #print(indices)
 
 tab_input.loc[indices, 'Zenith_bis'] = -1
 
-tab_input.to_csv('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus_adf.txt', sep = ' ', index = False, header = False, na_rep='NaN')
-
-
-
-
+tab_input.to_csv(f'{output_directory}input_simus_adf.txt', sep = ' ', index = False, header = False, na_rep='NaN')
 
