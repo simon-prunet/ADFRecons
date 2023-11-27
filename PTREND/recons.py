@@ -240,8 +240,8 @@ def main():
                 #params_out = res.x
                 #print(res.success)
 
-                #res = MCMC_minimizer(logprob, args=args)
-                res = MCMC_minimizer(logprob_alternate, args=args)
+                res = MCMC_minimizer(logprob, args=args)
+                #res = MCMC_minimizer(logprob_alternate, args=args)
                 params_out = res
                 #theta = params_out[0]
                 #phi = params_out[1]
@@ -256,7 +256,7 @@ def main():
                
                 if (st.compute_errors):
                     args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-                    hess = nd.Hessian(PWF_alternate_loss) (params_out,*args)
+                    hess = nd.Hessian(PWF_loss) (params_out,*args)
                     errors = np.sqrt(np.diag(np.linalg.inv(hess)))
                 else:
                     errors = np.array([np.nan]*2)
@@ -264,14 +264,14 @@ def main():
                 ## Errors computation needs work: errors are coming both from noise on amplitude and time measurements
                 if (st.compute_errors):
                     print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
-                print ("Chi2 at best fit = ",PWF_alternate_loss(params_out,*args))
+                print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
                 #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
                 #pro_time = time.process_time() #processor time in s
                 end_time = time.time()
                 plane_time = end_time - begining_time
                 # Write down results to file
                 st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
-                    np.rad2deg(params_out),np.rad2deg(errors),PWF_alternate_loss(params_out,*args), plane_time)
+                    np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args), plane_time)
     #print('params_out !!!!!!!!!', array_paramsout)
 
     if (st.recons_type==1):

@@ -5,12 +5,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import sys
 
-output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
-#output_directory = '/sps/grand/mguelfand/DC2/output_recons_MCMC/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_MCMC/'
+output_directory = '/sps/grand/mguelfand/DC2/output_recons_MCMC/'
 
 # 1) Plane Wave Front Analysis
 tab_plane = pd.read_csv(f'{output_directory}Rec_plane_wave_recons.txt', sep = '\s+', names=["IDsRec", "AntennaNumber", "ZenithRec", "_", "AzimuthRec", "nanan", "Chi2", "nanana", "time"])
-tab_input = pd.read_csv(f'{output_directory}input_simus.txt', sep='\s+', names=["EventName", "Zenith", "Azimuth", "Energy", "Primary", "XmaxDistance", "SlantXmax", "x_Xmax", "y_Xmax", "z_Xmax", "AntennasNumber"])
+tab_input = pd.read_csv(f'{output_directory}input_simus.txt', sep='\s+', names=["EventName", "Zenith", "Azimuth", "Energy", "Primary", "XmaxDistance", "SlantXmax", "x_Xmax", "y_Xmax", "z_Xmax", "AntennasNumber", "energy_unit"])
 
 indices = tab_plane.index[tab_plane['ZenithRec'] == -1].tolist()
 tab_input.loc[indices, 'Zenith'] = -1
@@ -30,7 +30,7 @@ tab_input_analysis.to_csv(f'{output_directory}input_simus_planeanalysis.txt', se
 tab_plane_analysis.to_csv(f'{output_directory}Rec_plane_wave_recons_planeanalysis.txt', sep = ' ', index = False, header = False, na_rep='NaN')
 
 IDsRec, AntennaNumber, ZenithRec, _, AzimuthRec, _, Chi2, _, time = np.loadtxt(f'{output_directory}Rec_plane_wave_recons_planeanalysis.txt').T
-EventName, Zenith, Azimuth, Energy, Primary, XmaxDistance, SlantXmax, x_Xmax, y_Xmax, z_Xmax, AntennasNumber = np.loadtxt(f'{output_directory}input_simus_planeanalysis.txt').T
+EventName, Zenith, Azimuth, Energy, Primary, XmaxDistance, SlantXmax, x_Xmax, y_Xmax, z_Xmax, AntennasNumber, energy_unit = np.loadtxt(f'{output_directory}input_simus_planeanalysis.txt').T
 
 AzimErrors, ZenErrors = recons.ComputeAngularErrors(AzimuthRec, ZenithRec, Azimuth, Zenith)                 #Compute angles errors
 AngularDistances = recons.ComputeAngularDistance(AzimuthRec, ZenithRec, Azimuth, Zenith)                    #Compute angular errors projected on sphere
@@ -55,14 +55,15 @@ print('!!!!!!', std_plane)
 #sys.exit()
 #.columns = ['Zenith']
 fig = plt.figure()
-plt.hist(time, bins=25)
+plt.hist(time, bins=100)
 plt.xlabel('time [s]')
 plt.title('Plane wave reconstruction: No noise. L-BFGS-B minimization')
 plt.show()
 fig = plt.figure()
-plt.hist(AngularDistances, bins=25)
+plt.hist(AngularDistances, bins=100, range=[0,1])
 plt.xlabel('Angular distance [°]')
 plt.title('Plane wave reconstruction: No noise. L-BFGS-B minimization')
+#plt.xlim(0,1)
 plt.show()
 #fig = plt.figure()
 #fig = plt.scatter(result['Zenith'], result['Averaged_angular_distance'])
@@ -72,7 +73,7 @@ plt.show()
 tab_sphere_rec = pd.read_csv(f'{output_directory}Rec_sphere_wave_recons.txt', sep = '\s+', names=["IDsRec", "nants", "Chi2", "_", "XSourceRec", "YSourceRec", "ZSourceRec", "TSourceRec", "time_spherical_recons"])
 tab_sphere_rec_analysis = tab_sphere_rec[tab_sphere_rec["nants"] != -1]
 
-tab_input = pd.read_csv(f'{output_directory}input_simus_bis.txt', sep='\s+', names=["EventName_bis", "Zenith_bis", "Azimuth_bis", "Energy_bis", "Primary_bis", "XmaxDistance_bis", "SlantXmax_bis", "x_Xmax_bis", "y_Xmax_bis", "z_Xmax_bis", "AntennasNumber_bis"])
+tab_input = pd.read_csv(f'{output_directory}input_simus_bis.txt', sep='\s+', names=["EventName_bis", "Zenith_bis", "Azimuth_bis", "Energy_bis", "Primary_bis", "XmaxDistance_bis", "SlantXmax_bis", "x_Xmax_bis", "y_Xmax_bis", "z_Xmax_bis", "AntennasNumber_bis", "energy_unit"])
 tab_input_analysis = tab_input[tab_input["Zenith_bis"] != -1]
 #print(tab_sphere_rec)
 
@@ -111,9 +112,9 @@ print("Mean Z error = ", np.mean(ZError), " STD = ", np.std(ZError))
 tab_input_analysis.to_csv(f'{output_directory}input_simus_bis_sphereanalysis.txt', sep = ' ', index = False, header = False, na_rep='NaN')
 tab_plane_rec_analysis.to_csv(f'{output_directory}Rec_plane_wave_recons_sphereanalysis.txt', sep = ' ', index = False, header = False, na_rep='NaN')
 tab_sphere_rec_analysis.to_csv(f'{output_directory}Rec_sphere_wave_recons_sphereanalysis.txt', sep = ' ', index = False, header = False, na_rep='NaN')
-IDsRec, nants, Chi2, _, XSourceRec, YSourceRec, ZSourceRec, TSourceRec, time_spherical_recons = np.loadtxt('{output_directory}Rec_sphere_wave_recons_sphereanalysis.txt').T
-EventName_bis, Zenith_bis, Azimuth_bis, Energy_bis, Primary_bis, XmaxDistance_bis, SlantXmax_bis, x_Xmax_bis, y_Xmax_bis, z_Xmax_bis, AntennasNumber_bis = np.loadtxt('{output_directory}input_simus_bis_sphereanalysis.txt').T
-IDsRec_bis, _, ZenithRec_bis, _, AzimuthRec_bis, _, Chi2_bis, _, time_plane_recons = np.loadtxt('{output_directory}Rec_plane_wave_recons_sphereanalysis.txt').T
+IDsRec, nants, Chi2, _, XSourceRec, YSourceRec, ZSourceRec, TSourceRec, time_spherical_recons = np.loadtxt(f'{output_directory}Rec_sphere_wave_recons_sphereanalysis.txt').T
+EventName_bis, Zenith_bis, Azimuth_bis, Energy_bis, Primary_bis, XmaxDistance_bis, SlantXmax_bis, x_Xmax_bis, y_Xmax_bis, z_Xmax_bis, AntennasNumber_bis, energy_unit = np.loadtxt(f'{output_directory}input_simus_bis_sphereanalysis.txt').T
+IDsRec_bis, _, ZenithRec_bis, _, AzimuthRec_bis, _, Chi2_bis, _, time_plane_recons = np.loadtxt(f'{output_directory}Rec_plane_wave_recons_sphereanalysis.txt').T
 
 #tout remettre dans un fichier texte
 LongitudinalError, LateralError = recons.ComputeSourceError_Long_Lat(Azimuth_bis, Zenith_bis, x_Xmax_bis, y_Xmax_bis, z_Xmax_bis, XSourceRec, YSourceRec, ZSourceRec)
@@ -131,17 +132,17 @@ SphereRecStats = np.array([EventName_bis, Azimuth_bis, Zenith_bis, Energy_bis, P
 f = recons.WriteToTxt(f"{output_directory}Sphere_wave_recons_stats.txt", SphereRecStats)
 
 fig = plt.figure()
-plt.hist(time_spherical_recons, bins=25)
+plt.hist(time_spherical_recons, bins=100)
 plt.xlabel('time [s]')
 plt.title('Spherical wave wave reconstruction: No noise. Gradient descent (L-BFGS-B)')
 plt.show()
 
 fig = plt.figure()
-plt.hist(LongitudinalError, bins=25)
+plt.hist(LongitudinalError, bins=100)
 plt.xlabel('Longitudinal error [m]')
 plt.show()
 
 fig = plt.figure()
-plt.hist(LateralError, bins=25)
+plt.hist(LateralError, bins=100)
 plt.xlabel('Lateral error[m]')
 plt.show()

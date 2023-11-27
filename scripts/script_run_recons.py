@@ -14,14 +14,14 @@ import random
 #Paths
 
 #file_coord = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/coord_antennas.txt'
-file_input_simu = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus.txt'
-file_recons = '/Users/mguelfan/Documents/GRAND/ADF_DC2/ADFRecons/PTREND/recons.py'
-output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
-output_simu = '/Users/mguelfan/Documents/GRAND/ADF_DC2/simus/'
-#file_input_simu = '/sps/grand/mguelfand/DC2/output_recons_ADF/input_simus.txt'
-#file_recons = '/sps/grand/mguelfand/DC2/ADFRecons/PTREND/recons.py'
-#output_directory = '/sps/grand/mguelfand/DC2/output_recons_ADF/'
-#output_simu = '/sps/grand/tueros/DiscreteStshpLibraryDunhuang2022/StshpOutbox/'
+#file_input_simu = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/input_simus.txt'
+#file_recons = '/Users/mguelfan/Documents/GRAND/ADF_DC2/ADFRecons/PTREND/recons.py'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
+#output_simu = '/Users/mguelfan/Documents/GRAND/ADF_DC2/simus/'
+file_input_simu = '/sps/grand/mguelfand/DC2/output_recons_ADF/input_simus.txt'
+file_recons = '/sps/grand/mguelfand/DC2/ADFRecons/PTREND/recons.py'
+output_directory = '/sps/grand/mguelfand/DC2/output_recons_ADF/'
+output_simu = '/sps/grand/tueros/DiscreteStshpLibraryDunhuang2022/StshpOutbox/'
 #############################
 #############################       
 
@@ -140,8 +140,8 @@ def WriteInputSimu(file_path, shower_input_all):
     return 0       
 
 #read_dictionnary(input_directory, file_path, file_coord)
-
-sample_files = random.sample(glob.glob(output_simu+'*'), 30)
+'''
+sample_files = random.sample(glob.glob(output_simu+'*'), 2000)
 
 filename_position = "coord_antennas.txt"
 filename_arrivaltime = 'Rec_coinctable.txt'
@@ -179,7 +179,7 @@ shower_input_all = np.vstack(shower_input_all)
 WriteAntennaPositionTable(filename_position, output_directory, antenna_params_all) 
 WriteReconsTable(filename_arrivaltime, output_directory, antenna_params_all)
 WriteInputSimu(file_input_simu, shower_input_all)
-
+'''
 #sys.exit()
 
 os.system('python3 ' + file_recons + ' 0 ' + output_directory)
@@ -201,7 +201,7 @@ tab_plane['time'].fillna(-1, inplace=True)
 
 tab_plane.to_csv(f'{output_directory}Rec_plane_wave_recons.txt', sep = ' ', index = False, header = False, na_rep='NaN')
 
-tab_input = pd.read_csv(f'{output_directory}input_simus.txt', sep='\s+', names=["EventName", "Zenith", "Azimut", "Energy", "Primary", "XmaxDistance", "SlantXmax", "x_Xmax", "y_Xmax", "z_Xmax", "AntennasNumber"])
+tab_input = pd.read_csv(f'{output_directory}input_simus.txt', sep='\s+', names=["EventName", "Zenith", "Azimut", "Energy", "Primary", "XmaxDistance", "SlantXmax", "x_Xmax", "y_Xmax", "z_Xmax", "AntennasNumber", "energy_unit"])
 indices = tab_plane.index[tab_plane['ZenithRec'] == -1].tolist()
 tab_input.loc[indices, 'Zenith'] = -1
 
@@ -215,7 +215,7 @@ os.system('python3 ' + file_recons + ' 1 ' + output_directory)
 os.system('python3 ' + file_recons + ' 2 ' + output_directory)
 
 tab_adf_rec = pd.read_csv(f'{output_directory}Rec_adf_recons.txt', sep = '\s+', names=["IDsRec", "nants", "ZenithRec", "nan", "AzimuthRec", "nanan", "Chi2", "nananan", "WidthRec", "AmpRec", "adf_time"])
-tab_input = pd.read_csv(f'{output_directory}input_simus_bis.txt', sep='\s+', names=["EventName_bis", "Zenith_bis", "Azimuth_bis", "Energy_bis", "Primary_bis", "XmaxDistance_bis", "SlantXmax_bis", "x_Xmax_bis", "y_Xmax_bis", "z_Xmax_bis", "AntennasNumber_bis"])
+tab_input = pd.read_csv(f'{output_directory}input_simus_bis.txt', sep='\s+', names=["EventName_bis", "Zenith_bis", "Azimuth_bis", "Energy_bis", "Primary_bis", "XmaxDistance_bis", "SlantXmax_bis", "x_Xmax_bis", "y_Xmax_bis", "z_Xmax_bis", "AntennasNumber_bis", "energy_unit"])
 indices = tab_adf_rec.index[tab_adf_rec['nants'] == -1].tolist()
 #print(indices)
 
