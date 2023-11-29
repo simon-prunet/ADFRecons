@@ -293,7 +293,7 @@ def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
     if (iseed is not None):
         np.random.seed(iseed)
     n = np.random.standard_normal(times.size) * sigma_t * c_light
-    return (cr*times + n)
+    return (times + n)
 
 
 
