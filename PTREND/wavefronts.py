@@ -264,7 +264,7 @@ def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     return(chi2)
 
 @njit(**kwd)
-def PWF_residuals(params, Xants, tants, cr=1.0):
+def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
     Computes timing residuals for each antenna using plane wave model
