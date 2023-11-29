@@ -591,7 +591,7 @@ def ADF_model(params, Xants, Xmax, asym_coeff=0.01):
     '''
 
     theta, phi, delta_omega, amplitude = params
-    nants = Aants.shape[0]
+    nants = Xants.shape[0]
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     # Define shower basis vectors
     K = np.array([st*cp,st*sp,ct])
@@ -605,10 +605,6 @@ def ADF_model(params, Xants, Xmax, asym_coeff=0.01):
     # print('XmaxDist = ',XmaxDist)
     asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\alpha)
     #
-    # Make sure Xants and tants are compatible
-    if (Xants.shape[0] != nants):
-        print("Shapes of Aants and Xants are incompatible",Aants.shape, Xants.shape)
-        return None
 
     # Precompute an array of Cerenkov angles to interpolate over (as in Valentin's code)
     omega_cerenkov = np.zeros(n_omega_cr+1)
