@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit, float64, prange
 from scipy.spatial.transform import Rotation as R
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, brentq
 from solver import newton
 from rotation import rotation
 # Used for interpolation
@@ -262,6 +262,43 @@ def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     residuals = PWF_residuals(params,Xants,tants,verbose=verbose,cr=cr)
     chi2 = (residuals**2).sum()
     return(chi2)
+
+def PWF_minimize_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
+    '''
+    Solves the minimization problem by using a special solution to the linear regression
+    on K(\theta,\phi), with the ||K||=1 constraint. Note that this is a non-convex problem.
+    This is formulated as 
+    argmin_k k^T.A.k - 2 b^T.k, s.t. ||k||=1
+    '''
+    nants = tants.shape[0]
+    # Make sure tants and Xants are compatible
+
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
+        return None
+    ## Compute A matrix (3x3) and b (3-)vector, see above
+    PXT = Xants - Xants.mean(axis=0) # P is the centering projector, XT=Xants
+    A = np.dot(Xants.T,PXT)
+    b = cr*np.dot(Xants.T,tants-tants.mean(axis=0))
+    # Diagonalize A, compute projections of b onto eigenvectors
+    d,W = np.linalg.eigh(A)
+    beta = np.dot(b,W)
+    # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
+    # Compute \mu such that \sum_i \beta_i^2/(\lambda_i+\mu)^2 = 1, using root finding on mu
+    def nc(mu):
+        # Computes difference of norm of k solution to 1. Coordinates of k are \beta_i/(d_i+\mu) in W basis
+        c = beta/(d+mu)
+        return ((c**2).sum()-1.)
+    mu_min = -d[0]+beta[0]
+    mu_max = -d[0]+np.linalg.norm(beta)
+    mu_opt = brentq(nc,mu_min,mu_max)
+    # Compute coordinates of k in W basis, return k
+    c = beta/(d+mu_opt)
+    k_opt = np.dot(W,c)
+    
+    return(k_opt)
+
+
 
 @njit(**kwd)
 def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
