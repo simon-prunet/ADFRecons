@@ -263,7 +263,7 @@ def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     chi2 = (residuals**2).sum()
     return(chi2)
 
-def PWF_minimize_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
+def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
     '''
     Solves the minimization problem by using a special solution to the linear regression
     on K(\theta,\phi), with the ||K||=1 constraint. Note that this is a non-convex problem.
@@ -283,20 +283,38 @@ def PWF_minimize_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     # Diagonalize A, compute projections of b onto eigenvectors
     d,W = np.linalg.eigh(A)
     beta = np.dot(b,W)
-    # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
-    # Compute \mu such that \sum_i \beta_i^2/(\lambda_i+\mu)^2 = 1, using root finding on mu
-    def nc(mu):
-        # Computes difference of norm of k solution to 1. Coordinates of k are \beta_i/(d_i+\mu) in W basis
-        c = beta/(d+mu)
-        return ((c**2).sum()-1.)
-    mu_min = -d[0]+beta[0]
-    mu_max = -d[0]+np.linalg.norm(beta)
-    mu_opt = brentq(nc,mu_min,mu_max)
-    # Compute coordinates of k in W basis, return k
-    c = beta/(d+mu_opt)
-    k_opt = np.dot(W,c)
+
+    if (np.abs(beta[0]) < 1e-14):
+        # Degenerate case. This will be triggered e.g. when all antennas lie in a single plane.
+        mu = -d[0]
+        c = np.zeros(3)
+        c[1] = beta[1]/(d[1]+mu)
+        c[2] = beta[2]/(d[2]+mu)
+        c[0] = np.sqrt(1-c[1]**2-c[2]**2) # Determined up to a sign, that will be chosen later to pick descending solution
+        k_opt = np.dot(W,c)
+        k_opt[2] = -np.abs(k_opt[2]) # Descending solution
     
-    return(k_opt)
+    else:
+        # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
+        # Compute \mu such that \sum_i \beta_i^2/(\lambda_i+\mu)^2 = 1, using root finding on mu
+        def nc(mu):
+            # Computes difference of norm of k solution to 1. Coordinates of k are \beta_i/(d_i+\mu) in W basis
+            c = beta/(d+mu)
+            return ((c**2).sum()-1.)
+        mu_min = -d[0]+beta[0]
+        mu_max = -d[0]+np.linalg.norm(beta)
+        mu_opt = brentq(nc,mu_min,mu_max)
+        # Compute coordinates of k in W basis, return k
+        c = beta/(d+mu_opt)
+        k_opt = np.dot(W,c)
+        
+    # Now get angles from k_opt coordinates
+    theta_opt = np.arccos(k_opt[2])
+    phi_opt = np.arctan2(k_opt[1],k_opt[0])
+    if phi_opt<0:
+        phi_opt += 2*np.pi
+
+    return(np.array([theta_opt,phi_opt]))
 
 
 
