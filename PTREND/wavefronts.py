@@ -249,6 +249,7 @@ def PWF_loss(params, Xants, tants, verbose=False, cr=1.0):
         print("Chi2 = ",chi2)
     return(chi2)
 
+@njit(**kwd)
 def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Defines Chi2 by summing model residuals over individual antennas,
@@ -283,16 +284,20 @@ def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
     # Diagonalize A, compute projections of b onto eigenvectors
     d,W = np.linalg.eigh(A)
     beta = np.dot(b,W)
+    nbeta = np.linalg.norm(beta)
 
-    if (np.abs(beta[0]) < 1e-14):
+    if (np.abs(beta[0]/nbeta) < 1e-14):
+        if (verbose):
+            print ("Degenerate case")
         # Degenerate case. This will be triggered e.g. when all antennas lie in a single plane.
         mu = -d[0]
         c = np.zeros(3)
         c[1] = beta[1]/(d[1]+mu)
         c[2] = beta[2]/(d[2]+mu)
-        c[0] = np.sqrt(1-c[1]**2-c[2]**2) # Determined up to a sign, that will be chosen later to pick descending solution
+        si = np.sign(np.dot(W[:,0],np.array([0,0,1.])))
+        c[0] = -si*np.sqrt(1-c[1]**2-c[2]**2) # Determined up to a sign: choose descending solution
         k_opt = np.dot(W,c)
-        k_opt[2] = -np.abs(k_opt[2]) # Descending solution
+        # k_opt[2] = -np.abs(k_opt[2]) # Descending solution
     
     else:
         # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
