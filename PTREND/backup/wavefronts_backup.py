@@ -4,8 +4,6 @@ from scipy.spatial.transform import Rotation as R
 from scipy.optimize import fsolve
 from solver import newton
 from rotation import rotation
-from scipy.optimize import fsolve, brentq
-
 # Used for interpolation
 n_omega_cr = 20
 
@@ -206,19 +204,6 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: Amplitude Distribution Function (see Valentin Decoene's thesis)
 
-@njit(**kwd)
-def PWF_model(params, Xants, cr=1.0):
-    '''
-    Generates plane wavefront timings
-    '''
-    theta, phi = params
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp=np.sin(phi)
-    K = np.array([st*cp,st*sp,ct])
-    dX = Xants - np.array([0.,0.,groundAltitude])
-    tants = np.dot(dX,K) / cr 
- 
-    return (tants)
-
 
 def PWF_loss(params, Xants, tants, verbose=False, cr=1.0):
     '''
@@ -255,103 +240,18 @@ def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     Defines Chi2 by summing model residuals over individual antennas,
     after maximizing likelihood over reference time.
     '''
+    theta,phi = params
     nants = tants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    # Make sure tants and Xants are compatible
     if (Xants.shape[0] != nants):
         print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
         return None
-    # Make sure tants and Xants are compatible
-    residuals = PWF_residuals(params,Xants,tants,verbose=verbose,cr=cr)
-    chi2 = (residuals**2).sum()
+    xk = np.dot(Xants, K)
+    ct0 = 1./nants * (cr*tants-xk).sum()
+    chi2 = ((cr*tants-ct0-xk)**2).sum()
     return(chi2)
-
-def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
-    '''
-    Solves the minimization problem by using a special solution to the linear regression
-    on K(\theta,\phi), with the ||K||=1 constraint. Note that this is a non-convex problem.
-    This is formulated as 
-    argmin_k k^T.A.k - 2 b^T.k, s.t. ||k||=1
-    '''
-    nants = tants.shape[0]
-    # Make sure tants and Xants are compatible
-
-    if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
-        return None
-    ## Compute A matrix (3x3) and b (3-)vector, see above
-    PXT = Xants - Xants.mean(axis=0) # P is the centering projector, XT=Xants
-    A = np.dot(Xants.T,PXT)
-    b = cr*np.dot(Xants.T,tants-tants.mean(axis=0))
-    # Diagonalize A, compute projections of b onto eigenvectors
-    d,W = np.linalg.eigh(A)
-    beta = np.dot(b,W)
-
-    if (np.abs(beta[0]) < 1e-14):
-        # Degenerate case. This will be triggered e.g. when all antennas lie in a single plane.
-        mu = -d[0]
-        c = np.zeros(3)
-        c[1] = beta[1]/(d[1]+mu)
-        c[2] = beta[2]/(d[2]+mu)
-        c[0] = np.sqrt(1-c[1]**2-c[2]**2) # Determined up to a sign, that will be chosen later to pick descending solution
-        k_opt = np.dot(W,c)
-        k_opt[2] = -np.abs(k_opt[2]) # Descending solution
-    
-    else:
-        # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
-        # Compute \mu such that \sum_i \beta_i^2/(\lambda_i+\mu)^2 = 1, using root finding on mu
-        def nc(mu):
-            # Computes difference of norm of k solution to 1. Coordinates of k are \beta_i/(d_i+\mu) in W basis
-            c = beta/(d+mu)
-            return ((c**2).sum()-1.)
-        mu_min = -d[0]+beta[0]
-        mu_max = -d[0]+np.linalg.norm(beta)
-        mu_opt = brentq(nc,mu_min,mu_max)
-        # Compute coordinates of k in W basis, return k
-        c = beta/(d+mu_opt)
-        k_opt = np.dot(W,c)
-        
-    # Now get angles from k_opt coordinates
-    theta_opt = np.arccos(k_opt[2])
-    phi_opt = np.arctan2(k_opt[1],k_opt[0])
-    if phi_opt<0:
-        phi_opt += 2*np.pi
-
-    return(np.array([theta_opt,phi_opt]))
-
-
-
-@njit(**kwd)
-def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
-
-    '''
-    Computes timing residuals for each antenna using plane wave model
-    Note that this is defined at up to an additive constant, that when minimizing
-    the loss over it, amounts to centering the residuals.
-    '''
-    nants = tants.shape[0]
-    # Make sure tants and Xants are compatible
-    if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
-        return None
-   
-    times = PWF_model(params,Xants,cr=cr)
-    res = cr * (tants - times)
-    res -= res.mean() # Mean is projected out when maximizing likelihood over reference time t0
-    return(res)
-
-@njit(**kwd)
-def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
-    '''
-    Generates plane wavefront timings, zero at shower core, with jitter noise added
-    '''
-
-    times = PWF_model(params,Xants,cr=cr)
-    # Add noise
-    if (iseed is not None):
-        np.random.seed(iseed)
-    n = np.random.standard_normal(times.size) * sigma_t * c_light
-    return (times + n)
-
-
 
 def PWF_grad(params, Xants, tants, verbose=False, cr=1.0):
 
@@ -459,7 +359,6 @@ def PWF_loss_nonp(params, Xants, tants, verbose=False, cr=1.0):
         print("Chi2 = ",chi2)
     return (chi2)
 ###################################################
-
 
 @njit(**kwd,parallel=False)
 def SWF_loss(params, Xants, tants, verbose=False, log = False, cr=1.0):
@@ -651,18 +550,19 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
         # Angle between k_plan and val_plan
         xi = np.arccos(np.dot(K_plan,val_plan)
-                       /np.linalg.norm(K_plan)
-                       /np.linalg.norm(val_plan))
+                    /np.linalg.norm(K_plan)
+                    /np.linalg.norm(val_plan))
         
-        #omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
         # Interpolate to save time
         omega_cr = np.interp(xi,xi_table,omega_cerenkov)
-        # omega_cr = 0.015240011539221762
+        #omega_cr = 0.015240011539221762
         # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
         width = ct / (dX[2]/l_ant) * delta_omega
+        #print(width)
         # Distribution
         adf = amplitude/l_ant / (1.+4.*( ((np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2)
         adf *= 1. + asym*np.cos(eta) # 
@@ -843,7 +743,7 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
         dX = Xants[i,:]-Xmax
         # Expressed in shower frame coordinates
         dX_sp = np.dot(mat,dX)
-        #
+            #
         l_ant = np.linalg.norm(dX)
         eta = np.arctan2(dX_sp[1],dX_sp[0])
         omega = np.arccos(np.dot(K,dX)/l_ant)
@@ -852,8 +752,8 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
         val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
         # Angle between k_plan and val_plan
         xi = np.arccos(np.dot(K_plan,val_plan)
-                       /np.linalg.norm(K_plan)
-                       /np.linalg.norm(val_plan))
+                    /np.linalg.norm(K_plan)
+                    /np.linalg.norm(val_plan))
         
         # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
         # Interpolate to save time
