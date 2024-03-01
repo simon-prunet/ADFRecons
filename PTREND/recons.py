@@ -241,7 +241,7 @@ def main():
             if (st.compute_errors):
                 args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
                 hess = nd.Hessian(SWF_loss)(params_out,*args)
-                errors = np.sqrt(np.diag(np.linalg.inv(hessian)))
+                errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             else:
                 errors = np.array([np.nan]*2)      
 
