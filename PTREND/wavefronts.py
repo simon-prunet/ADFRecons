@@ -152,13 +152,13 @@ def compute_delay(omega,Xmax,Xb,U,K,alpha,delta, xmaxDist):
 
 
 @njit(**kwd)
-def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
+def compute_Cerenkov(xi, K, xmaxDist, Xmax, delta, groundAltitude):
 
     '''
     Solve for Cerenkov angle by minimizing
     time delay between light rays originating from Xb and Xmax and arriving
     at observer's position. 
-    eta:   azimuth of observer's position in shower plane coordinates 
+    xi:    azimuth of observer's position in horizontal plane 
     K:     direction vector of shower
     Xmax:  coordinates of Xmax point
     delta: distance between Xmax and Xb points
@@ -176,8 +176,8 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     K_plan = np.array([K[0]/nk2D,K[1]/nk2D,0.])
     # Direction vector to observer's position in horizontal plane
     # This assumes all observers positions are in the horizontal plane
-    ce = np.cos(eta); se=np.sin(eta)
-    U = np.array([ce*K_plan[0]+se*K_plan[1],-se*K_plan[0]+ce*K_plan[1],0.])
+    cx = np.cos(xi); sx=np.sin(xi)
+    U = np.array([cx*K_plan[0]+sx*K_plan[1],-sx*K_plan[0]+cx*K_plan[1],0.])
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
 
@@ -806,3 +806,153 @@ def ADF_simulation(params, Xants, Xmax, sigma_amp = 1e6, asym_coeff=0.01):
 
     return (adf+noise)
 
+
+# ADF functions for arbitrary positions of the antennas (3D)
+
+@njit(**kwd)
+def ADF_3D_model(params, Xants, Xmax, asym_coeff=0.01):
+    
+    '''
+
+    Computes amplitude prediction for each antenna (i):
+    residuals[i] = f_i^{ADF}(\theta,\phi,\delta\omega,A,r_xmax)
+    where the ADF function reads:
+    
+    f_i = f_i(\omega_i, \eta_i, \alpha, l_i, \delta_omega, A)
+        = A/l_i f_geom(\alpha, \eta_i) f_Cerenkov(\omega,\delta_\omega)
+    
+    where 
+    
+    f_geom(\alpha, \eta_i) = (1 + B \sin(\alpha))**2 \cos(\eta_i) # B is here the geomagnetic asymmetry
+    f_Cerenkov(\omega_i,\delta_\omega) = 1 / (1+4{ (\tan(\omega_i)/\tan(\omega_c))**2 - 1 ) / \delta_\omega }**2 )
+    
+    Input parameters are: params = theta, phi, delta_omega, amplitude
+    \theta, \phi define the shower direction angles, \delta_\omega the width of the Cerenkov ring, 
+    A is the amplitude paramater, r_xmax is the norm of the position vector at Xmax.
+
+    Derived parameters are: 
+    \alpha, angle between the shower axis and the magnetic field
+    \eta_i is the azimuthal angle of the (projection of the) antenna position in shower plane
+    \omega_i is the angle between the shower axis and the vector going from Xmax to the antenna position
+
+    '''
+
+    theta, phi, delta_omega, amplitude = params
+    nants = Xants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    # Define shower basis vectors
+    K = np.array([st*cp,st*sp,ct])
+    K_plan = np.array([K[0],K[1]])
+    KxB = np.cross(K,Bvec); KxB /= np.linalg.norm(KxB)
+    KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
+    # Coordinate transform matrix
+    mat = np.vstack((KxB,KxKxB,K))
+    # 
+    XmaxDist = (groundAltitude-Xmax[2])/K[2]
+    # print('XmaxDist = ',XmaxDist)
+    asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\alpha)
+    #
+
+    # Loop on antennas. Here no precomputation table is possible for Cerenkov angle computation.
+    # Calculation needs to be done for each antenna.
+    res = np.zeros(nants)
+    for i in range(nants):
+        # Antenna position from Xmax
+        dX = Xants[i,:]-Xmax
+        # Expressed in shower frame coordinates
+        dX_sp = np.dot(mat,dX)
+        #
+        l_ant = np.linalg.norm(dX)
+        eta = np.arctan2(dX_sp[1],dX_sp[0])
+        omega = np.arccos(np.dot(K,dX)/l_ant)
+
+        omega_cr = compute_Cerenkov_3D(Xants[i,:],K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        # print ("omega_cr = ",omega_cr)
+
+        # Distribution width. Here rescaled by ratio of cosines (why ?)
+        width = ct / (dX[2]/l_ant) * delta_omega
+        # Distribution
+        adf = amplitude/l_ant / (1.+4.*( ((np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2)
+        adf *= 1. + asym*np.cos(eta) # 
+        # Chi2
+        res[i]= adf
+
+    return(res)
+
+@njit(**kwd)
+def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
+
+    '''
+    Solve for Cerenkov angle by minimizing
+    time delay between light rays originating from Xb and Xmax and arriving
+    at observer's position. 
+    Xant:  (single) antenna position 
+    K:     direction vector of shower
+    Xmax:  coordinates of Xmax point
+    delta: distance between Xmax and Xb points
+    groundAltitude: self explanatory
+
+    Returns:     
+    omega: angle between shower direction and line joining Xmax and observer's position
+
+    '''
+
+    # Compute coordinates of point before Xmax
+    Xb = Xmax - delta*K
+    dXcore = Xant - np.array([0.,0.,groundAltitude])
+
+    # Direction vector to observer's position from shower core
+    # This is a bit dangerous for antennas numerically close to shower core... 
+    U = dXcore / np.linalg.norm(dXcore)
+    # Compute angle between shower direction and (horizontal) direction to observer
+    alpha = np.arccos(np.dot(K,U))
+
+
+    # Now solve for omega
+    # Starting point at standard value acos(1/n(Xmax)) 
+    omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
+    # print("###############")
+    # omega_cr = fsolve(compute_delay,[omega_cr_guess])
+    omega_cr = newton(compute_delay_3D, omega_cr_guess, args=(Xmax,Xb,Xant,U,K,alpha,delta, xmaxDist),verbose=False)
+    ### DEBUG ###
+    # omega_cr = omega_cr_guess
+    return(omega_cr)
+
+@njit(**kwd)
+def compute_delay_3D(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
+
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
+    # print('omega = ',omega,'X_obs = ',X)
+    n0 = ZHSEffectiveRefractionIndex(Xmax,X)
+    # print('n0 = ',n0)
+    n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
+    # print('n1 = ',n1)
+    res = minor_equation(omega,n0,n1,alpha, delta, xmaxDist)
+    # print('delay = ',res)
+    return(res)
+
+@njit(**kwd)
+def compute_observer_position_3D(omega,Xmax,Xant,U,K):
+    '''
+    Given angle omega between shower direction (K) and line joining Xmax and observer's position,
+    Xmax position and Xant antenna position, and unit vector (U) to observer from shower core, compute
+    coordinates of observer
+    '''
+
+    # Compute rotation axis. Make sure it is normalized
+    Rot_axis = np.cross(U,K)
+    Rot_axis /= np.linalg.norm(Rot_axis)
+    # Compute rotation matrix from Rodrigues formula
+    Rotmat = rotation(-omega,Rot_axis)
+    # Define rotation using scipy's method
+    # Rotation = R.from_rotvec(-omega * Rot_axis)
+    # print('#####')
+    # print(Rotation.as_matrix())
+    # print('#####')
+    # Dir_obs  = Rotation.apply(K)
+    Dir_obs = np.dot(Rotmat,K)
+    # Compute observer's position
+    t = (Xant[2] - Xmax[2])/Dir_obs[2]
+    X = Xmax + t*Dir_obs
+    return (X)
