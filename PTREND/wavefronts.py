@@ -37,6 +37,7 @@ def RefractionIndexAtPosition(X):
     h = (np.sqrt( (X[2]+R_earth)**2 + R2 ) - R_earth)/1e3 # Altitude in km
     rh = ns*np.exp(kr*h)
     n = 1.+1e-6*rh
+    #n = 1.+(1e-6*rh)/2
     return (n)
 
 @njit(**kwd)
@@ -317,7 +318,62 @@ def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
 
     return(np.array([theta_opt,phi_opt]))
 
+def PWF_minimize_alternate_loss_bis(Xants, tants, verbose=False, cr=1.0):
+    '''
+    Solves the minimization problem by using a special solution to the linear regression
+    on K(\theta,\phi), with the ||K||=1 constraint. Note that this is a non-convex problem.
+    This is formulated as 
+    argmin_k k^T.A.k - 2 b^T.k, s.t. ||k||=1
+    '''
+    nants = tants.shape[0]
+    # Make sure tants and Xants are compatible
 
+    if (Xants.shape[0] != nants):
+        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
+        return None
+    ## Compute A matrix (3x3) and b (3-)vector, see above
+    PXT = Xants - Xants.mean(axis=0) # P is the centering projector, XT=Xants
+    A = np.dot(Xants.T,PXT)
+    b = cr*np.dot(Xants.T,tants-tants.mean(axis=0))
+    # Diagonalize A, compute projections of b onto eigenvectors
+    d,W = np.linalg.eigh(A)
+    beta = np.dot(b,W)
+    nbeta = np.linalg.norm(beta)
+
+    if (np.abs(beta[0]/nbeta) < 1e-14):
+        if (verbose):
+            print ("Degenerate case")
+        # Degenerate case. This will be triggered e.g. when all antennas lie in a single plane.
+        mu = -d[0]
+        c = np.zeros(3)
+        c[1] = beta[1]/(d[1]+mu)
+        c[2] = beta[2]/(d[2]+mu)
+        si = np.sign(np.dot(W[:,0],np.array([0,0,1.])))
+        c[0] = -si*np.sqrt(1-c[1]**2-c[2]**2) # Determined up to a sign: choose descending solution
+        k_opt = np.dot(W,c)
+        # k_opt[2] = -np.abs(k_opt[2]) # Descending solution
+    
+    else:
+        # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
+        # Compute \mu such that \sum_i \beta_i^2/(\lambda_i+\mu)^2 = 1, using root finding on mu
+        def nc(mu):
+            # Computes difference of norm of k solution to 1. Coordinates of k are \beta_i/(d_i+\mu) in W basis
+            c = beta/(d+mu)
+            return ((c**2).sum()-1.)
+        mu_min = -d[0]+beta[0]
+        mu_max = -d[0]+np.linalg.norm(beta)
+        mu_opt = brentq(nc,mu_min,mu_max)
+        # Compute coordinates of k in W basis, return k
+        c = beta/(d+mu_opt)
+        k_opt = np.dot(W,c)
+        
+    # Now get angles from k_opt coordinates
+    theta_opt = np.arccos(k_opt[2])
+    phi_opt = np.arctan2(k_opt[1],k_opt[0])
+    if phi_opt<0:
+        phi_opt += 2*np.pi
+
+    return(np.array([theta_opt,phi_opt]))
 
 @njit(**kwd)
 def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
@@ -502,6 +558,7 @@ def SWF_loss(params, Xants, tants, verbose=False, log = False, cr=1.0):
     for i in range(nants):
         # Compute average refraction index between emission and observer
         n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i,:])
+        #n_average = 1
         #if (verbose) :
         #    print('n_average = ',n_average)
         ## n_average = 1.0 #DEBUG
@@ -657,8 +714,8 @@ def ADF_loss(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         #omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
         # Interpolate to save time
         omega_cr = np.interp(xi,xi_table,omega_cerenkov)
-        # omega_cr = 0.015240011539221762
-        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        #omega_cr = 0.015240011539221762
+        #omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
@@ -838,6 +895,8 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
 
     # Loop on antennas
     res = np.zeros(nants)
+    #eta_array = np.zeros(nants)
+    #omega_array = np.zeros(nants)
     for i in range(nants):
         # Antenna position from Xmax
         dX = Xants[i,:]-Xmax
@@ -855,11 +914,11 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
                        /np.linalg.norm(K_plan)
                        /np.linalg.norm(val_plan))
         
-        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        #omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
         # Interpolate to save time
         omega_cr = np.interp(xi,xi_table,omega_cerenkov)
         # omega_cr = 0.015240011539221762
-        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        #omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
@@ -869,6 +928,8 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
         adf *= 1. + asym*np.cos(eta) # 
         # Chi2
         res[i]= (Aants[i]-adf)
+        #eta_array[i] = eta
+        #omega_array[i] = omega
 
     return(res)
 
@@ -876,15 +937,17 @@ def ADF_residuals(params, Aants, Xants, Xmax, asym_coeff=0.01):
 def ADF_simulation(params, Aants, Xants, Xmax, asym_coeff=0.01, verbose=False):
 
     nants = Xants.shape[0]
-    res = -ADF_residuals(params,np.zeros(nants), Xants, Xmax, asym_coeff=asym_coeff)
+    res = -ADF_residuals(params, np.zeros(nants), Xants, Xmax, asym_coeff=asym_coeff)
     return (res)
+    #return (res, Aants)
 
-def function_omega(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
+
+def ADF_omega_eta(params,Aants, Xants, Xmax, asym_coeff=0.01):
     
     '''
 
-    Defines Chi2 by summing *amplitude* model residuals over antennas (i):
-    loss = \sum_i (A_i - f_i^{ADF}(\theta,\phi,\delta\omega,A,r_xmax))**2
+    Computes amplitude residual for each antenna (i):
+    residual[i] = (A_i - f_i^{ADF}(\theta,\phi,\delta\omega,A,r_xmax))**2
     where the ADF function reads:
     
     f_i = f_i(\omega_i, \eta_i, \alpha, l_i, \delta_omega, A)
@@ -905,7 +968,6 @@ def function_omega(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
     \omega_i is the angle between the shower axis and the vector going from Xmax to the antenna position
 
     '''
-    omega_array=[]
 
     theta, phi, delta_omega, amplitude = params
     nants = Aants.shape[0]
@@ -928,15 +990,105 @@ def function_omega(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         return None
 
     # Precompute an array of Cerenkov angles to interpolate over (as in Valentin's code)
-    omega_cerenkov = np.zeros(2*n_omega_cr+1)
-    xi_table = np.arange(2*n_omega_cr+1)/n_omega_cr*np.pi
-    for i in range(n_omega_cr+1):
+    omega_cerenkov = np.zeros(n_omega_cr+1)
+    xi_table = np.arange(n_omega_cr+1)/n_omega_cr*2.*np.pi
+    for i in range(n_omega_cr):
         omega_cerenkov[i] = compute_Cerenkov(xi_table[i],K,XmaxDist,Xmax,2.0e3,groundAltitude)
-    # Enforce symmetry
-    omega_cerenkov[n_omega_cr+1:] = (omega_cerenkov[:n_omega_cr])[::-1]
+    # Enforce boundary condition, as numba does not like "period" keyword of np.interp
+    omega_cerenkov[-1] = omega_cerenkov[0]
 
     # Loop on antennas
-    tmp = 0.
+    res = np.zeros(nants)
+    eta_array = np.zeros(nants)
+    omega_array = np.zeros(nants)
+    for i in range(nants):
+        # Antenna position from Xmax
+        dX = Xants[i,:]-Xmax
+        # Expressed in shower frame coordinates
+        dX_sp = np.dot(mat,dX)
+        #
+        l_ant = np.linalg.norm(dX)
+        eta = np.arctan2(dX_sp[1],dX_sp[0])
+        #When eta angle is negative, omega is negative (see fig.3.24)
+        sign_omega = np.sign(eta, dtype=np.float64)
+        omega = np.arccos(np.dot(K,dX)/l_ant)
+        omega_algebric = sign_omega*omega
+        # vector in the plane defined by K and dX, projected onto 
+        # horizontal plane
+        val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
+        # Angle between k_plan and val_plan
+        xi = np.arccos(np.dot(K_plan,val_plan)
+                       /np.linalg.norm(K_plan)
+                       /np.linalg.norm(val_plan))
+        
+        #omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
+        # Interpolate to save time
+        omega_cr = np.interp(xi,xi_table,omega_cerenkov)
+        # omega_cr = 0.015240011539221762
+       #omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        # print ("omega_cr = ",omega_cr)
+
+        # Distribution width. Here rescaled by ratio of cosines (why ?)
+        width = ct / (dX[2]/l_ant) * delta_omega
+        # Distribution
+        adf = amplitude/l_ant / (1.+4.*( ((np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2)
+        adf *= 1. + asym*np.cos(eta) # 
+        # Chi2
+        res[i]= (Aants[i]-adf)
+        eta_array[i] = eta
+        omega_array[i] = omega_algebric
+
+    return(eta_array, omega_array)
+
+# ADF functions for arbitrary positions of the antennas (3D)
+
+@njit(**kwd)
+def ADF_3D_model(params, Xants, Xmax, asym_coeff=0.01):
+    
+    '''
+
+    Computes amplitude prediction for each antenna (i):
+    residuals[i] = f_i^{ADF}(\theta,\phi,\delta\omega,A,r_xmax)
+    where the ADF function reads:
+    
+    f_i = f_i(\omega_i, \eta_i, \alpha, l_i, \delta_omega, A)
+        = A/l_i f_geom(\alpha, \eta_i) f_Cerenkov(\omega,\delta_\omega)
+    
+    where 
+    
+    f_geom(\alpha, \eta_i) = (1 + B \sin(\alpha))**2 \cos(\eta_i) # B is here the geomagnetic asymmetry
+    f_Cerenkov(\omega_i,\delta_\omega) = 1 / (1+4{ (\tan(\omega_i)/\tan(\omega_c))**2 - 1 ) / \delta_\omega }**2 )
+    
+    Input parameters are: params = theta, phi, delta_omega, amplitude
+    \theta, \phi define the shower direction angles, \delta_\omega the width of the Cerenkov ring, 
+    A is the amplitude paramater, r_xmax is the norm of the position vector at Xmax.
+
+    Derived parameters are: 
+    \alpha, angle between the shower axis and the magnetic field
+    \eta_i is the azimuthal angle of the (projection of the) antenna position in shower plane
+    \omega_i is the angle between the shower axis and the vector going from Xmax to the antenna position
+
+    '''
+
+    theta, phi, delta_omega, amplitude = params
+    nants = Xants.shape[0]
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
+    # Define shower basis vectors
+    K = np.array([st*cp,st*sp,ct])
+    K_plan = np.array([K[0],K[1]])
+    KxB = np.cross(K,Bvec); KxB /= np.linalg.norm(KxB)
+    KxKxB = np.cross(K,KxB); KxKxB /= np.linalg.norm(KxKxB)
+    # Coordinate transform matrix
+    mat = np.vstack((KxB,KxKxB,K))
+    # 
+    XmaxDist = (groundAltitude-Xmax[2])/K[2]
+    # print('XmaxDist = ',XmaxDist)
+    asym = asym_coeff * (1. - np.dot(K,Bvec)**2) # Azimuthal dependence, in \sin^2(\alpha)
+    #
+
+    # Loop on antennas. Here no precomputation table is possible for Cerenkov angle computation.
+    # Calculation needs to be done for each antenna.
+    res = np.zeros(nants)
     for i in range(nants):
         # Antenna position from Xmax
         dX = Xants[i,:]-Xmax
@@ -946,23 +1098,8 @@ def function_omega(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         l_ant = np.linalg.norm(dX)
         eta = np.arctan2(dX_sp[1],dX_sp[0])
         omega = np.arccos(np.dot(K,dX)/l_ant)
-        if Xants[i,0] > Xmax[0]:
-            omega= -omega
-        omega_array.append(omega)
-       
 
-        # vector in the plane defined by K and dX, projected onto 
-        # horizontal plane
-        val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
-        # Angle between k_plan and val_plan
-        xi = np.arccos(np.dot(K_plan,val_plan)
-                       /np.linalg.norm(K_plan)
-                       /np.linalg.norm(val_plan))
-        
-        # omega_cr = compute_Cerenkov(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        # Interpolate to save time
-        omega_cr = np.interp(xi,xi_table,omega_cerenkov)
-        # omega_cr = 0.015240011539221762
+        omega_cr = compute_Cerenkov_3D(Xants[i,:],K,XmaxDist,Xmax,2.0e3,groundAltitude)
         # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
@@ -972,10 +1109,115 @@ def function_omega(params, Aants, Xants, Xmax, asym_coeff=0.01,verbose=False):
         adf = amplitude/l_ant / (1.+4.*( ((np.tan(omega)/np.tan(omega_cr))**2 - 1. )/width )**2)
         adf *= 1. + asym*np.cos(eta) # 
         # Chi2
-        tmp += (Aants[i]-adf)**2
+        res[i]= adf
+
+    return(res)
+
+@njit(**kwd)
+def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
+
+    '''
+    Solve for Cerenkov angle by minimizing
+    time delay between light rays originating from Xb and Xmax and arriving
+    at observer's position. 
+    Xant:  (single) antenna position 
+    K:     direction vector of shower
+    Xmax:  coordinates of Xmax point
+    delta: distance between Xmax and Xb points
+    groundAltitude: self explanatory
+
+    Returns:     
+    omega: angle between shower direction and line joining Xmax and observer's position
+
+    '''
+
+    # Compute coordinates of point before Xmax
+    Xb = Xmax - delta*K
+    dXcore = Xant - np.array([0.,0.,groundAltitude])
+
+    # Direction vector to observer's position from shower core
+    # This is a bit dangerous for antennas numerically close to shower core... 
+    U = dXcore / np.linalg.norm(dXcore)
+    # Compute angle between shower direction and (horizontal) direction to observer
+    alpha = np.arccos(np.dot(K,U))
 
 
-    chi2 = tmp
-    if (verbose):
-        print ("params = ",np.rad2deg(params[:2]),params[2:]," Chi2 = ",chi2)
-    return(omega_array)
+    # Now solve for omega
+    # Starting point at standard value acos(1/n(Xmax)) 
+    omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
+    # print("###############")
+    # omega_cr = fsolve(compute_delay,[omega_cr_guess])
+    omega_cr = newton(compute_delay_3D, omega_cr_guess, args=(Xmax,Xb,Xant,U,K,alpha,delta, xmaxDist),verbose=False)
+    ### DEBUG ###
+    # omega_cr = omega_cr_guess
+    return(omega_cr)
+
+@njit(**kwd)
+def compute_delay_3D(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
+
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
+    # print('omega = ',omega,'X_obs = ',X)
+    n0 = ZHSEffectiveRefractionIndex(Xmax,X)
+    # print('n0 = ',n0)
+    n1 = ZHSEffectiveRefractionIndex(Xb  ,X)
+    # print('n1 = ',n1)
+    res = minor_equation(omega,n0,n1,alpha, delta, xmaxDist)
+    # print('delay = ',res)
+    return(res)
+
+@njit(**kwd)
+def compute_observer_position_3D(omega,Xmax,Xant,U,K):
+    '''
+    Given angle omega between shower direction (K) and line joining Xmax and observer's position,
+    Xmax position and Xant antenna position, and unit vector (U) to observer from shower core, compute
+    coordinates of observer
+    '''
+
+    # Compute rotation axis. Make sure it is normalized
+    Rot_axis = np.cross(U,K)
+    Rot_axis /= np.linalg.norm(Rot_axis)
+    # Compute rotation matrix from Rodrigues formula
+    Rotmat = rotation(-omega,Rot_axis)
+    # Define rotation using scipy's method
+    # Rotation = R.from_rotvec(-omega * Rot_axis)
+    # print('#####')
+    # print(Rotation.as_matrix())
+    # print('#####')
+    # Dir_obs  = Rotation.apply(K)
+    Dir_obs = np.dot(Rotmat,K)
+    # Compute observer's position
+    t = (Xant[2] - Xmax[2])/Dir_obs[2]
+    X = Xmax + t*Dir_obs
+    return (X)
+
+    #def logprob(angles, coords, times):
+#    return -0.5*PWF_loss(angles, coords, times)
+
+def logprob(angles, *args):
+    return -0.5*PWF_loss(angles, *args)
+
+def logprob_alternate(angles, *args):
+    return -0.5*PWF_alternate_loss(angles, *args)
+
+
+def MCMC_minimizer(logprob, args):
+    #np.random.seed(42)
+    ndim, nwalkers = 2, 10
+    sampler = EnsembleSampler(nwalkers, ndim, logprob, args=args)
+    #thetas = np.random.rand(10)*np.pi/2 + np.pi/2
+    thetas = np.random.rand(10)*np.pi
+    phis = np.random.rand(10)*2.*np.pi
+    p0 = np.vstack((thetas, phis)).T
+    state  = sampler.run_mcmc(p0, 100)
+    sampler.reset()
+    sampler.run_mcmc(state, 10000)
+    samples = sampler.get_chain(flat=True, thin=25)
+    #print(samples)
+    #logprobs = sampler.get_log_prob(flat=True, thin=25)
+    #mask= (samples[:,0]>np.pi/2)*(samples[:,0]<np.pi)*(samples[:,1]>0)*(samples[:,1]<2*np.pi)
+    mask= (samples[:,0]>0)*(samples[:,0]<np.pi)*(samples[:,1]>0)*(samples[:,1]<2*np.pi)
+    med = np.median(samples[mask,:], axis=0)
+    #med = np.median(samples, axis=0)
+    #print(thetas, phis)
+    #print(np.rad2deg(med))
+    return med

@@ -1,5 +1,7 @@
 import numpy as np
 from wavefronts import *
+from recons_PWF import *
+from recons_swf_bis import *
 import sys
 import os
 import scipy.optimize as so
@@ -8,48 +10,22 @@ from emcee import EnsembleSampler
 import time
 import signal
 
+
 c_light = 2.997924580e8
 
 #output_directory = '/sps/grand/mguelfand/DC2/output_recons_ADF/'
 #output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_failed/'
 #output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_linear/'
 #output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_linear/conservative/'
-output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_test/aggressive/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_test/aggressive/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/transients_GP13/reconstruction_2/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/transients_GP13/february2024/'
+output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_simusgp300_Dunhuang2022/complete_pipeline_aggressive/'
 
 def handler(signum, frame):
     raise TimeoutError("Le temps limite est dépassé.")
 signal.signal(signal.SIGALRM, handler)
 
-#def logprob(angles, coords, times):
-#    return -0.5*PWF_loss(angles, coords, times)
-
-def logprob(angles, *args):
-    return -0.5*PWF_loss(angles, *args)
-
-def logprob_alternate(angles, *args):
-    return -0.5*PWF_alternate_loss(angles, *args)
-
-
-def MCMC_minimizer(logprob, args):
-    #np.random.seed(42)
-    ndim, nwalkers = 2, 10
-    sampler = EnsembleSampler(nwalkers, ndim, logprob, args=args)
-    thetas = np.random.rand(10)*np.pi/2 + np.pi/2
-    phis = np.random.rand(10)*2.*np.pi
-    p0 = np.vstack((thetas, phis)).T
-    state  = sampler.run_mcmc(p0, 100)
-    sampler.reset()
-    sampler.run_mcmc(state, 10000)
-    samples = sampler.get_chain(flat=True, thin=25)
-    #print(samples)
-    #logprobs = sampler.get_log_prob(flat=True, thin=25)
-    mask= (samples[:,0]>np.pi/2)*(samples[:,0]<np.pi)*(samples[:,1]>0)*(samples[:,1]<2*np.pi)
-    med = np.median(samples[mask,:], axis=0)
-    #med = np.median(samples, axis=0)
-    #print(thetas, phis)
-    #print(np.rad2deg(med))
-    return med
 
 class antenna_set:
 
@@ -104,7 +80,7 @@ class coincidence_set:
         for index in coinc_indices:
             current_mask = (coinc_index_array==index)
             current_length = np.sum(current_mask)
-            if current_length>3:
+            if current_length>=3:
                 self.nants[self.ncoincs] = current_length
                 self.nantsmax = np.maximum(self.nantsmax, current_length)
                 self.ncoincs += 1
@@ -123,7 +99,7 @@ class coincidence_set:
             mask = (coinc_index_array==index)
             # print (mask)
             current_length = np.sum(mask)
-            if current_length>3:
+            if current_length>=3:
                 # Next line assumes that the antenna coordinate files gives all antennas in order, starting from antenna number=init_ant
                 # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
                 self.antenna_index_array[current_coinc,:self.nants[current_coinc]] = antenna_index_array[mask]-self.ant_set.init_ant
@@ -163,10 +139,12 @@ class setup:
             self.outfile = self.data_dir+'/Rec_sphere_wave_recons.txt'
         elif (self.recons_type==2):
             self.outfile = self.data_dir+'/Rec_adf_recons.txt'
+            self.outfile_res = self.data_dir+'/Rec_adf_amplitude_residuals_arccos_refractiveindex.txt'
 
         if os.path.exists(self.outfile):
             # Remove previous files
             os.remove(self.outfile)
+
 
         # Prepare input files, depending on reconstruction type
         if (self.recons_type==1 or self.recons_type==2):
@@ -185,8 +163,21 @@ class setup:
         fid = open(outfile,'a')
         theta,phi,r_xmax,t_s = params
         st=np.sin(theta); ct=np.cos(theta); sp=np.sin(phi); cp=np.cos(phi); K = [st*cp,st*sp,ct]
-        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le \n"%(coinc,nants,chi2,np.nan,-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2],t_s, time))
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le \n"%(coinc,nants,chi2,np.nan,-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2],t_s, r_xmax, time))
         fid.close()
+
+    def write_xmax_false(self,outfile,coinc):
+        fid = open(outfile,'a')
+        fid.write("%ld %3.0f %12.0f %12.0f %12.0f %12.0f %12.0f %12.0f %12.0f \n"%(coinc, -1 ,-1 , -1, -1, -1, -1, -1, -1))
+        fid.close()
+
+    def write_xmax_SWF_analitycal(self,outfile,coinc,nants,params,chi2,time):
+        fid = open(outfile,'a')
+        x_recons, y_recons, z_recons, t_s = params
+        #st=np.sin(theta); ct=np.cos(theta); sp=np.sin(phi); cp=np.cos(phi); K = [st*cp,st*sp,ct]
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le \n"%(coinc,nants,chi2,np.nan, x_recons, y_recons, z_recons,t_s, time))
+        fid.close()
+
 
     def write_adf(self,outfile,coinc,nants,params,errors,chi2, time):
         fid = open(outfile,'a')
@@ -195,6 +186,23 @@ class setup:
         format_string = "%ld %3.0d "+"%12.5le "*9+"\n"
         fid.write(format_string%(coinc,nants,np.rad2deg(theta),np.rad2deg(theta_err),
             np.rad2deg(phi),np.rad2deg(phi_err),chi2, np.nan,delta_omega,amplitude, time))
+        fid.close()
+
+    def write_adf_false(self, outfile, coinc):
+        fid = open(outfile,'a')
+        format_string = "%ld %3.0f "+"%12.0f "*9+"\n"
+        fid.write(format_string%(coinc, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1))
+        fid.close()
+
+
+    def write_amplitude_residuals(self, outfile_res, coinc, nants, amplitude_simu, residuals, amplitude_recons, eta_recons, omega_recons, coord):
+        fid = open(outfile_res,'a')
+        coinc = [coinc] * len(residuals)
+        nants = [nants] * len(residuals)
+        amplitude_simu = [amplitude_simu] * len(residuals)
+        #fid.write(f"{coinc}\t{nants}\t{coord}\t{residuals}\n")
+        for coinci, n, s, r, a, e, o, c in zip(coinc, nants, amplitude_simu, residuals, amplitude_recons, eta_recons, omega_recons, coord):
+            fid.write(f"{coinci}\t{n}\t{s}\t{r}\t{a}\t{e}\t{o}\t{c[0]}\t{c[1]}\t{c[2]}\n")
         fid.close()
 
 def main():
@@ -216,48 +224,34 @@ def main():
     # Read coincidences (antenna index, coincidence index, peak time, peak amplitude)
     # Routine only keep valid number of antennas (>3)
     co = coincidence_set(data_dir+'/Rec_coinctable.txt',an)
-    print("Number of coincidences = ",co.ncoincs)
+    #print("Number of coincidences = ",co.ncoincs)
     # Initialize reconstruction
     st = setup(data_dir,recons_type)
 
-    #array_paramsout = []
     if (st.recons_type==0):
-        #file_path = f"{data_dir}{'/plane_wave_convergence-MCMC.txt'}"
-        #with open(file_path, 'a') as file:
         # PWF model. We do not assume any prior analysis was done.
             for current_recons in range(co.ncoincs):
                 begining_time = time.time()
                 bounds = ((np.pi/2+1e-7,np.pi),(0,2*np.pi))
+                #bounds = ((1e-7,np.pi),(0,2*np.pi))
                 params_in = np.array(bounds).mean(axis=1)
                 # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
                 args=(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
                 #args = (co.antenna_coords_array[current_recons,:], co.peak_time_array[current_recons,:])
-                #print(len(co.antenna_coords_array[current_recons,:]))
-                #print('args!!!!', (args[1]/c_light))
-                #while args
-                #print(args)
-
-                # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
+               
+                #test different minimization methods (gradient descent, MCMC, analytical):
+                #res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
                 #res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
                 #res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='Nelder-Mead')
                 #params_out = res.x
                 #print(res.success)
-
                 #res = MCMC_minimizer(logprob, args=args)
                 res = PWF_minimize_alternate_loss(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
                 #res = MCMC_minimizer(logprob_alternate, args=args)
+                #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')    
+                #res = PWF_methodC(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
                 params_out = res
-                #theta = params_out[0]
-                #phi = params_out[1]
-                #file.write(f"{np.rad2deg(theta):.1f} {np.rad2deg(phi):.1f}\n")
-                #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
-            
-                #array_paramsout.append(params_out)
-                #print('params_out', params_out[0])
-                #print('bounds', bounds [0][0])
 
-                
-               
                 if (st.compute_errors):
                     args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
                     hess = nd.Hessian(PWF_loss) (params_out,*args)
@@ -268,15 +262,13 @@ def main():
                 ## Errors computation needs work: errors are coming both from noise on amplitude and time measurements
                 if (st.compute_errors):
                     print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
-                print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
+                #print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
                 #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
-                #pro_time = time.process_time() #processor time in s
                 end_time = time.time()
                 plane_time = end_time - begining_time
                 # Write down results to file
                 st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
                     np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args), plane_time)
-    #print('params_out !!!!!!!!!', array_paramsout)
 
     if (st.recons_type==1):
         # SWF model. We assume that PWF reconstrution was run first. Check if corresponding result file exists.
@@ -307,24 +299,25 @@ def main():
                     l = fid_input_angles.readline().strip().split()
                     if l != 'nan':
                         theta_in = float(l[2])
+                    #if theta_in <= np.rad2deg(0) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
                     if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
-                        params_in = [-1, -1, -1, -1]
+                        params_out = [-1, -1, -1, -1]
                         with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
                             file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
                         with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
                             filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                        st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)
+                        #st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_out, -1, -1)
+                        st.write_xmax_false(st.outfile,co.coinc_index_array[current_recons,0])
                     else:
-                        #print('theta_in', theta_in)
                         phi_in   = float(l[4])
                         bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
                                 [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)], 
-                                [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
-                                [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+                                [0, 10e5],
+                               #[-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
+                                [-10e5,0]]
+                                #[6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+                                
                         params_in = np.array(bounds).mean(axis=1)
-                        print("params_in = ",params_in)
-                        print("bounds = ", bounds)
-
                         args=(co.antenna_coords_array[current_recons,:co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]],False)
                         # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
@@ -336,11 +329,21 @@ def main():
                         res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
                         print('xxxxx')
                         res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
-                        # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+                        #res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
                         params_out = res.x
-                
 
-
+                        #analytical SWF
+                        #res = TDOA_ant1(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr=1.0)
+                        #res = approx_B(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr=1.0)
+                        #res = approx_C(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr=1.0)
+                        #params_out = res
+                        #X0 = co.antenna_coords_array[current_recons,: co.nants[current_recons]][0]
+                        #print(X0)
+                        #n_average = ZHSEffectiveRefractionIndex(X0,np.array(res[0:3]))
+                        #print('params_out', params_out)
+                        #print(n_average)
+                        #res = TDOA_ant1(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr= 1/n_average)
+                        #params_out = res
                         # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
                         if (st.compute_errors):
                             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
@@ -350,7 +353,7 @@ def main():
                             errors = np.array([np.nan]*2)      
 
                         print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-                        print ("Chi2 at best fit = ",SWF_loss(params_out,*args,False))
+                        #print ("Chi2 at best fit = ",SWF_loss(params_out,*args,False))
             
                         # Compute gradient with SWF_grad and compare to finite difference estimate
                         # print(nd.Gradient(SWF_loss)(params_out,*args))
@@ -358,6 +361,7 @@ def main():
 
                         #print ("Chi2 at best fit \pm errors = ",SWF_loss(params_out+errors,*args),SWF_loss(params_out-errors,*args))
                         # Write down results to file 
+                        
                         filebis = open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') 
                         linebis_copy = linebis[current_recons]
                         filebis.writelines(linebis_copy)
@@ -366,21 +370,24 @@ def main():
                         lines_copy = lines[current_recons]
                         file.writelines(lines_copy)
                         file.close()
-                        #pro_time = time.process_time() #processor time in s
+                        
                         end_time = time.time()
                         sphere_time = end_time - begining_time
+                        #select output file either for descent gradient or SWF analytical
                         st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args), sphere_time)
+                        #st.write_xmax_SWF_analitycal(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out, sphere_time, sphere_time)
                         i+=1
                         #print(i)
 
                 except TimeoutError as e:
                     print("error !!!!!!!!!!", e) 
-                    params_in = [-1, -1, -1, -1]
+                    params_out = [-1, -1, -1, -1]
                     with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
                         file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
                     with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
                         filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                    st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_in, -1, -1)               
+                    #st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_out, -1, -1)  
+                    st.write_xmax_false(st.outfile,co.coinc_index_array[current_recons,0])             
                     continue
                 finally:
                     signal.alarm(0) 
@@ -398,6 +405,7 @@ def main():
         #fid_input_xmax   = open(st.input_xmax_file,"r")
         fid_input_angles = open(f'{output_directory}Rec_plane_wave_reconsbis.txt',"r")
         fid_input_xmax   = open(f'{output_directory}Rec_sphere_wave_recons.txt',"r")
+        fid_input_xmaxsimu = open(f'{output_directory}input_simus_bis.txt',"r")
         #co.ncoins == len(fid_input_angles)
         for current_recons in range(co.ncoincs):
         #for current_recons in range(len(length_data)):
@@ -409,41 +417,39 @@ def main():
                 theta_in = float(l[2])
                 phi_in   = float(l[4])
                 l = fid_input_xmax.readline().strip().split()
+                l_simu = fid_input_xmaxsimu.readline().strip().split()
+                #here, reconstructed Xmax
                 Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
+                #to have fixed Xmax from the simulations
+                #Xmax = np.array([float(l_simu[7]),float(l_simu[8]),float(l_simu[9])])
                 bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
                             [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
                             [0.1,3.0],
                             [1e6,1e10]]
                 params_in = np.array(bounds).mean(axis=1)
-                print(params_in[2])
-                #file = open(f'{output_directory}width.txt', 'a')
-                #file.write(str(params_in[2]) + '\n')
-                #file.close()
+                #print(params_in[2])
                 if theta_in  == -1:
-                    st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                    st.write_adf_false(st.outfile, co.coinc_index_array[current_recons,0])
+                    #st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
                 else:
-                    #l = fid_input_xmax.readline().strip().split()
-                    #Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
-                    #bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
-                    #        [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
-                    #        [0.1,3.0],
-                    #        [1e6,1e10]]
-                    #params_in = np.array(bounds).mean(axis=1) # Central values
-                    ## Refine guess for amplitude, based on maximum of peak values ##
-                    #if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
-                    #    st.write_adf(st.outfile, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1)
-                    #else:
                     lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
                     #print(lant)
                     params_in[3] = co.peak_amp_array[current_recons,:co.nants[current_recons]].max() * lant
                     #print ('amp_guess = ',params_in[3])
                     ###################
                     args = (co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax, 0.01, False)
-                    res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax),
+                    res = so.minimize(ADF_loss, params_in,args=(co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax),
                                        method='L-BFGS-B', bounds=bounds)
                     #res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
                     #print (res)
                     params_out = res.x
+
+                    #compute the difference between the simulated amplitude at one antenna and the reconstructed one 
+                    
+                    amplitude_diff = ADF_residuals(params_out, co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
+                    amplitude_recons = ADF_simulation(params_out,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
+                    eta, omega = ADF_omega_eta(params_out,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
+                    st.write_amplitude_residuals(st.outfile_res, co.coinc_index_array[current_recons, 0], co.nants[current_recons], co.peak_amp_array[current_recons,:co.nants[current_recons]], amplitude_diff, amplitude_recons, eta*180/np.pi, omega*180/np.pi, co.antenna_coords_array[current_recons,:co.nants[current_recons]])
                     # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
                     # hess = nd.Hessian(ADF_loss)(params_out,*args)
                     # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
@@ -455,7 +461,8 @@ def main():
                     adf_time = end_time - begining_time
                     st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,errors,ADF_loss(params_out,*args), adf_time)
             except ZeroDivisionError as erreur:
-                st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                st.write_adf_false(st.outfile, co.coinc_index_array[current_recons,0])
+                #st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
                 print("Une division par zéro a été détectée :", erreur)
 
         return
