@@ -356,6 +356,22 @@ def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
     return (times + n)
 
 
+def PWF_Fisher(params, Xants, sigma_t = 5e-9, cr=1.0):
+    '''
+    Computes the Fisher matrix for the (alternate) profile likelihood
+    '''
+    theta, phi = params
+    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp=np.sin(phi)
+    K = np.array([st*cp,st*sp,ct])
+    dX = Xants - np.array([0.,0.,groundAltitude])
+    J = np.array([[ct*cp,ct*sp,-st],[-st*sp,st*cp,0.]])
+    rhs = np.dot(dX,J.T) # nants x 2
+    rhs = rhs - np.mean(rhs,axis=0) # Remove mean on antennas: centering
+    res = np.dot(rhs.T,rhs)
+    res /= (sigma_t * c_light)**2
+    return(res)
+
+### Note that these correspond to the old loss, with sums on antenna pairs
 
 def PWF_grad(params, Xants, tants, verbose=False, cr=1.0):
 
