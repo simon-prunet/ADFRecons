@@ -701,9 +701,9 @@ def ADF_model(params, Xants, Xmax, asym_coeff=0.01):
         l_ant = np.linalg.norm(dX)
         eta = np.arctan2(dX_sp[1],dX_sp[0])
         omega = np.arccos(np.dot(K,dX)/l_ant)
-        # vector in the plane defined by K and dX, projected onto 
-        # horizontal plane
-        val_plan = np.array([dX[0]/l_ant - K[0], dX[1]/l_ant - K[1]])
+        # vector in the plane P defined by K and dX, in the horizontal plane H
+        # Is perpendicular to both normals to P and H
+        val_plan = np.cross(np.cross(dX,K),np.array([0.,0.,1.]))
         # Angle between k_plan and val_plan
         xi = np.arccos(np.dot(K_plan,val_plan)
                        /np.linalg.norm(K_plan)
