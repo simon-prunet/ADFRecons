@@ -180,6 +180,9 @@ def compute_Cerenkov(xi, K, xmaxDist, Xmax, delta, groundAltitude):
     U = np.array([cx*K_plan[0]+sx*K_plan[1],-sx*K_plan[0]+cx*K_plan[1],0.])
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
+    # Beware, K is in the direction of propagation, while alpha is defined between U
+    # and the direction of the source as seen from shower core
+    alpha = np.pi - alpha
 
 
     # Now solve for omega
@@ -923,6 +926,10 @@ def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
     U = dXcore / np.linalg.norm(dXcore)
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
+    # Beware, K is in the direction of propagation, while alpha is defined between U
+    # and the direction of the source as seen from shower core
+    alpha = np.pi - alpha
+  
 
 
     # Now solve for omega
