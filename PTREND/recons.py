@@ -18,14 +18,6 @@ groundAltitude = 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 
-#output_directory = '/sps/grand/mguelfand/DC2/output_recons_ADF/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_linear/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_linear/conservative/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_test/aggressive/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/transients_GP13/reconstruction_2/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/transients_GP13/february2024/'
-#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_starshape/output_recons_nonoise_Cerenkov_analytic/'
 output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_starshape/nonoise_trueparameters_50100MHz/'
 
 def handler(signum, frame):
