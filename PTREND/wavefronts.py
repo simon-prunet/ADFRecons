@@ -220,6 +220,7 @@ def compute_alpha(eta, K):
     U = np.array([ce*K_plan[0]+se*K_plan[1],-se*K_plan[0]+ce*K_plan[1],0.])
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
+    alpha = np.pi-alpha
     return(alpha)
 
 
