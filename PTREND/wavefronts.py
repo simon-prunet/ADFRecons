@@ -129,7 +129,7 @@ def minor_equation(omega, n0, n1, alpha, delta, xmaxDist):
     '''
     Lx = xmaxDist
     sa = np.sin(alpha)
-    saw = np.sin(alpha-omega) # Keeping minus sign to compare to Valentin's results. Should be plus sign.
+    saw = np.sin(alpha+omega) # Keeping minus sign to compare to Valentin's results. Should be plus sign.
     com = np.cos(omega)
     # Eq. 3.38 p125.
     res = Lx*Lx * sa*sa *(n0*n0-n1*n1) + 2*Lx*sa*saw*delta*(n0-n1*n1*com) + delta*delta*(1.-n1*n1)*saw*saw
@@ -919,7 +919,11 @@ def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
 
     # Compute coordinates of point before Xmax
     Xb = Xmax - delta*K
-    dXcore = Xant - np.array([0.,0.,groundAltitude])
+    # Core of shower, taken at groundAltitude for reference
+    # Ground altitude might be computed later as a derived quantity, e.g. 
+    # as the median of antenna altitudes.
+    Xcore = Xmax + xmaxDist * K 
+    dXcore = Xant - Xcore
 
     # Direction vector to observer's position from shower core
     # This is a bit dangerous for antennas numerically close to shower core... 
@@ -937,7 +941,7 @@ def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
     omega_cr_guess = np.arccos(1./RefractionIndexAtPosition(Xmax))
     # print("###############")
     # omega_cr = fsolve(compute_delay,[omega_cr_guess])
-    omega_cr = newton(compute_delay_3D, omega_cr_guess, args=(Xmax,Xb,Xant,U,K,alpha,delta, xmaxDist),verbose=False)
+    omega_cr = newton(compute_delay_3D, omega_cr_guess, args=(Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist),verbose=False)
     ### DEBUG ###
     # omega_cr = omega_cr_guess
     return(omega_cr)
@@ -945,7 +949,7 @@ def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
 @njit(**kwd)
 def compute_delay_3D(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
 
-    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K,xmaxDist,alpha)
     # print('omega = ',omega,'X_obs = ',X)
     n0 = ZHSEffectiveRefractionIndex(Xmax,X)
     # print('n0 = ',n0)
@@ -956,14 +960,14 @@ def compute_delay_3D(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
     return(res)
 
 @njit(**kwd)
-def compute_observer_position_3D(omega,Xmax,Xant,U,K):
+def compute_observer_position_3D(omega,Xmax,Xant,U,K,xmaxDist,alpha):
     '''
     Given angle omega between shower direction (K) and line joining Xmax and observer's position,
     Xmax position and Xant antenna position, and unit vector (U) to observer from shower core, compute
     coordinates of observer
     '''
 
-    # Compute rotation axis. Make sure it is normalized
+    # Compute rotation axis. Make sure it is normalized. This could be done in compute_Cerenkov3D and passed along.
     Rot_axis = np.cross(U,K)
     Rot_axis /= np.linalg.norm(Rot_axis)
     # Compute rotation matrix from Rodrigues formula
@@ -976,6 +980,10 @@ def compute_observer_position_3D(omega,Xmax,Xant,U,K):
     # Dir_obs  = Rotation.apply(K)
     Dir_obs = np.dot(Rotmat,K)
     # Compute observer's position
-    t = (Xant[2] - Xmax[2])/Dir_obs[2]
+    # this assumed coincidence was computed at antenna altitude)
+    # t = (Xant[2] - Xmax[2])/Dir_obs[2]
+    # This assumes coincidence is computed at fixed alpha, i.e. along U, starting from Xcore
+    t = np.sin(alpha)/np.sin(alpha+omega) * xmaxDist
     X = Xmax + t*Dir_obs
+
     return (X)
