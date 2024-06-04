@@ -187,7 +187,8 @@ def main():
             res = PWF_minimize_alternate_loss(*args)
             #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
             
-            params_out = res.x
+            ## params_out = res.x
+            params_out = res
             # compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
             if (st.compute_errors):
                 args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
