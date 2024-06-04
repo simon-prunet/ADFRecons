@@ -176,14 +176,15 @@ def main():
     if (st.recons_type==0):
         # PWF model. We do not assume any prior analysis was done.
         for current_recons in range(co.ncoincs):
-            bounds = ((np.pi/2+1e-7,np.pi),(0,2*np.pi))
-            params_in = np.array(bounds).mean(axis=1)
+            ## bounds = ((np.pi/2+1e-7,np.pi),(0,2*np.pi))
+            ## params_in = np.array(bounds).mean(axis=1)
             # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
             # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
             # res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
-            res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='Nelder-Mead')
+            ## res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='Nelder-Mead')
+            res = PWF_minimize_alternate_loss(*args)
             #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')
             
             params_out = res.x
