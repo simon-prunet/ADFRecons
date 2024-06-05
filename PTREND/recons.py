@@ -24,7 +24,7 @@ class antenna_set:
 class coincidence_set:
 
 
-    def __init__(self, coinc_table_file, antenna_set_instance):
+    def __init__(self, coinc_table_file, antenna_set_instance, t_offset=0.):
 
         if (not os.path.exists(coinc_table_file)):
             print("Coincidence table file %s does not exist"%coinc_table_file)
@@ -43,7 +43,7 @@ class coincidence_set:
         antenna_index_array = tmp[:,0]
         coinc_index_array   = tmp[:,1]
         tmp2 = np.loadtxt(self.coinc_table_file,usecols=(2,3)) # floats
-        peak_time_array = tmp2[:,0]*c_light
+        peak_time_array = (tmp2[:,0]-t_offset)*c_light
         peak_amp_array  = tmp2[:,1]
         coinc_indices = np.unique(coinc_index_array)
         ncoincs = len(coinc_indices)
