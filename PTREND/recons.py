@@ -179,7 +179,7 @@ def main():
             ## bounds = ((np.pi/2+1e-7,np.pi),(0,2*np.pi))
             ## params_in = np.array(bounds).mean(axis=1)
             # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
+            args=(co.antenna_coords_array[current_recons,:co.nants[current_recons],:],co.peak_time_array[current_recons,:co.nants[current_recons]])
 
             # res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
             # res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
@@ -225,7 +225,7 @@ def main():
             print("params_in = ",params_in)
             print("bounds = ", bounds)
 
-            args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
+            args=(co.antenna_coords_array[current_recons,:co.nants[current_recons],:],co.peak_time_array[current_recons,:co.nants[current_recons]],True)
             # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
             # Test value of gradient, compare to finite difference estimate
@@ -286,7 +286,7 @@ def main():
             params_in[3] = co.peak_amp_array[current_recons,:].max() * lant
             print ('amp_guess = ',params_in[3])
             ###################
-            args = (co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax, 0.01, True)
+            args = (co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons],:],Xmax, 0.01, True)
             # res = so.minimize(ADF_loss,params_in,args=(co.peak_amp_array[current_recons,:],co.antenna_coords_array[current_recons,:],Xmax),
             #                   method='L-BFGS-B')#, bounds=bounds)
             res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
