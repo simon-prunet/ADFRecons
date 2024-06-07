@@ -217,26 +217,30 @@ def main():
             l = fid_input_angles.readline().strip().split()
             theta_in = float(l[2])
             phi_in   = float(l[4])
+            #bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
+            #          [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)], 
+            #          [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
+            #          [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
             bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
                       [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)], 
-                      [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
-                      [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+                      [0.,100000.],
+                      [-100000.,0.]]
             params_in = np.array(bounds).mean(axis=1)
             print("params_in = ",params_in)
             print("bounds = ", bounds)
 
-            args=(co.antenna_coords_array[current_recons,:co.nants[current_recons],:],co.peak_time_array[current_recons,:co.nants[current_recons]],True)
+            args=(co.antenna_coords_array[current_recons,:co.nants[current_recons],:],co.peak_time_array[current_recons,:co.nants[current_recons]],False)
             # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
 
             # Test value of gradient, compare to finite difference estimate
             # print(nd.Gradient(SWF_loss,order=4)(params_in,*args))
             # print(SWF_grad(params_in,*args))
-            method = 'L-BFGS-B'
-            print('Minimize using %s'%method)
-            res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
-            print('xxxxx')
-            res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
-            # res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+            ## method = 'L-BFGS-B'
+            ## print('Minimize using %s'%method)
+            ## res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
+            #print('xxxxx')
+            res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':1000})
+            #res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
             params_out = res.x
 
             # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
@@ -248,7 +252,7 @@ def main():
                 errors = np.array([np.nan]*2)      
 
             print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Chi2 at best fit = ",SWF_loss(params_out,*args,True))
+            print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
             
             # Compute gradient with SWF_grad and compare to finite difference estimate
             # print(nd.Gradient(SWF_loss)(params_out,*args))

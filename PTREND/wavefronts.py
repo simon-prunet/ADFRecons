@@ -326,7 +326,7 @@ def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
 
 
 
-@njit(**kwd)
+#@njit(**kwd)
 def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
@@ -485,8 +485,8 @@ def PWF_loss_nonp(params, Xants, tants, verbose=False, cr=1.0):
 
 ### SWF related functions
 
-@njit(**kwd)
-def SWF_model(params, Xants, cr=1.0):
+#@njit(**kwd)
+def SWF_model(params, Xants, verbose=False, cr=1.0):
     '''
     Computes predicted wavefront timings for the spherical case.
     Inputs: params = theta, phi, r_xmax, t_s
@@ -509,7 +509,7 @@ def SWF_model(params, Xants, cr=1.0):
 
 
 
-@njit(**kwd,parallel=False)
+#@njit(**kwd,parallel=False)
 def SWF_loss(params_array, Xants, tants, verbose=False, log = False, cr=1.0):
 
     '''
@@ -547,11 +547,11 @@ def SWF_loss(params_array, Xants, tants, verbose=False, log = False, cr=1.0):
     chi2 = ( res**2 ).sum()
  
     if (verbose):
-        print("theta,phi,r_xmax,t_s = ",theta,phi,r_xmax,t_s)
+        print("theta,phi,r_xmax,t_s = ",*params)
         print ("Chi2 = ",chi2)
     return(chi2)
 
-@njit(**kwd,parallel=False)
+#@njit(**kwd,parallel=False)
 def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
@@ -579,7 +579,7 @@ def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     return(res)
 
-@njit(**kwd)
+#@njit(**kwd)
 def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
     '''
     Computes simulated wavefront timings for the spherical case.
@@ -594,15 +594,15 @@ def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
     # Add noise
     np.random.seed(iseed)
     n = np.random.standard_normal(tants.size) * sigma_t * c_light
-    return (tants + n)@njit(**kwd,parallel=False)
+    return (tants + n)
 
 ### The following might be useful... or not.
-
+#@njit(**kwd,parallel=False)
 def log_SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
     return np.log10(SWF_loss(params,Xants,tants,verbose=verbose,cr=cr))
 
 
-@njit(**kwd)
+#@njit(**kwd)
 def SWF_grad(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
