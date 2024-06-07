@@ -42,7 +42,7 @@ class coincidence_set:
         tmp = np.loadtxt(self.coinc_table_file,dtype='int',usecols=(0,1))
         antenna_index_array = tmp[:,0]
         coinc_index_array   = tmp[:,1]
-        tmp2 = np.loadtxt(self.coinc_table_file,usecols=(2,3),dtype='float128') # float128 needed for GPS times
+        tmp2 = np.loadtxt(self.coinc_table_file,usecols=(2,3)) # floats
         peak_time_array = (tmp2[:,0]-t_offset)*float(c_light)
         peak_amp_array  = tmp2[:,1]
         coinc_indices = np.unique(coinc_index_array)
@@ -69,7 +69,7 @@ class coincidence_set:
         self.antenna_index_array = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
         self.antenna_coords_array= np.zeros((self.ncoincs,self.nantsmax,3))
         self.coinc_index_array   = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
-        self.peak_time_array     = np.zeros((self.ncoincs,self.nantsmax),dtype='float128')
+        self.peak_time_array     = np.zeros((self.ncoincs,self.nantsmax),dtype='float')
         self.peak_amp_array      = np.zeros((self.ncoincs,self.nantsmax))
 
         # Filter and read
