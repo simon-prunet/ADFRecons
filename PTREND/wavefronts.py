@@ -267,6 +267,7 @@ def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
     chi2 = (residuals**2).sum()
     return(chi2)
 
+
 def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
     '''
     Solves the minimization problem by using a special solution to the linear regression
@@ -275,33 +276,34 @@ def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
     argmin_k k^T.A.k - 2 b^T.k, s.t. ||k||=1
     '''
     nants = tants.shape[0]
+
     # Make sure tants and Xants are compatible
 
     if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
+        print("Shapes of tants and Xants are incompatible", tants.shape, Xants.shape)
         return None
-    ## Compute A matrix (3x3) and b (3-)vector, see above
+    # Compute A matrix (3x3) and b (3-)vector, see above
     PXT = Xants - Xants.mean(axis=0) # P is the centering projector, XT=Xants
-    A = np.dot(Xants.T,PXT)
-    b = cr*np.dot(Xants.T,tants-tants.mean(axis=0))
+    A = np.dot(Xants.T, PXT)
+    b = np.dot(Xants.T, tants-tants.mean(axis=0))
     # Diagonalize A, compute projections of b onto eigenvectors
-    d,W = np.linalg.eigh(A)
-    beta = np.dot(b,W)
+    d, W = np.linalg.eigh(A)
+    beta = np.dot(b, W)
     nbeta = np.linalg.norm(beta)
 
     if (np.abs(beta[0]/nbeta) < 1e-14):
         if (verbose):
-            print ("Degenerate case")
+            print("Degenerate case")
         # Degenerate case. This will be triggered e.g. when all antennas lie in a single plane.
         mu = -d[0]
         c = np.zeros(3)
         c[1] = beta[1]/(d[1]+mu)
         c[2] = beta[2]/(d[2]+mu)
-        si = np.sign(np.dot(W[:,0],np.array([0,0,1.])))
-        c[0] = -si*np.sqrt(1-c[1]**2-c[2]**2) # Determined up to a sign: choose descending solution
-        k_opt = np.dot(W,c)
+        si = np.sign(np.dot(W[:, 0], np.array([0, 0, 1.])))
+        c[0] = -si*np.sqrt(1-c[1]**2-c[2]**2)  # Determined up to a sign: choose descending solution
+        k_opt = np.dot(W, c)
         # k_opt[2] = -np.abs(k_opt[2]) # Descending solution
-    
+
     else:
         # Assume non-degenerate case, i.e. projections on smallest eigenvalue are non zero
         # Compute \mu such that \sum_i \beta_i^2/(\lambda_i+\mu)^2 = 1, using root finding on mu
@@ -311,22 +313,25 @@ def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
             return ((c**2).sum()-1.)
         mu_min = -d[0]+beta[0]
         mu_max = -d[0]+np.linalg.norm(beta)
-        mu_opt = brentq(nc,mu_min,mu_max)
+        mu_opt = brentq(nc, mu_min, mu_max, maxiter=1000)
         # Compute coordinates of k in W basis, return k
         c = beta/(d+mu_opt)
-        k_opt = np.dot(W,c)
-        
+        k_opt = np.dot(W, c)
+
     # Now get angles from k_opt coordinates
-    theta_opt = np.arccos(k_opt[2])
-    phi_opt = np.arctan2(k_opt[1],k_opt[0])
-    if phi_opt<0:
+    if k_opt[2] > 1e-2:
+        k_opt = k_opt-2*(k_opt@W[:, 0])*W[:, 0]
+
+    theta_opt = np.arccos(-k_opt[2])
+    phi_opt = np.arctan2(-k_opt[1], -k_opt[0])
+
+    if phi_opt < 0:
         phi_opt += 2*np.pi
 
-    return(np.array([theta_opt,phi_opt]))
+    return (np.array([theta_opt, phi_opt]))
 
 
-
-#@njit(**kwd)
+# @njit(**kwd)
 def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
@@ -337,21 +342,22 @@ def PWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
     nants = tants.shape[0]
     # Make sure tants and Xants are compatible
     if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
+        print("Shapes of tants and Xants are incompatible", tants.shape, Xants.shape)
         return None
-   
-    times = PWF_model(params,Xants,cr=cr)
+
+    times = PWF_model(params, Xants, cr=cr)
     res = cr * (tants - times)
-    res -= res.mean() # Mean is projected out when maximizing likelihood over reference time t0
-    return(res)
+    res -= res.mean()  # Mean is projected out when maximizing likelihood over reference time t0
+    return (res)
+
 
 @njit(**kwd)
-def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
+def PWF_simulation(params, Xants, sigma_t=5e-9, iseed=None, cr=1.0):
     '''
     Generates plane wavefront timings, zero at shower core, with jitter noise added
     '''
 
-    times = PWF_model(params,Xants,cr=cr)
+    times = PWF_model(params, Xants, cr=cr)
     # Add noise
     if (iseed is not None):
         np.random.seed(iseed)
@@ -359,7 +365,7 @@ def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
     return (times + n)
 
 
-def PWF_Fisher(params, Xants, sigma_t = 5e-9, cr=1.0):
+def PWF_Fisher(params, Xants, sigma_t=5e-9, cr=1.0):
     '''
     Computes the Fisher matrix for the (alternate) profile likelihood
     '''
