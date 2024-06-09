@@ -9,22 +9,22 @@ c_light = 2.997924580e8
 
 class antenna_set:
 
-    def __init__(self,  position_file):
+    def __init__(self, position_file):
 
         if (not os.path.exists(position_file)):
             print("Antenna coordinates file %s does not exist"%position_file)
             return
         print(" Reading antenna positions from file %s"%position_file)
         self.position_input_file = position_file
-        self.indices = np.loadtxt(self.position_input_file,  usecols=(0, ),  dtype=int)
-        self.coordinates = np.loadtxt(self.position_input_file,  usecols = (1, 2, 3))
+        self.indices = np.loadtxt(self.position_input_file, usecols=(0, ), dtype=int)
+        self.coordinates = np.loadtxt(self.position_input_file, usecols = (1, 2, 3))
         self.init_ant = np.min(self.indices)
         self.nants = np.size(self.indices)
         return
 
 
 class coincidence_set:
-    def __init__(self,  coinc_table_file,  antenna_set_instance,  t_offset=0.):
+    def __init__(self, coinc_table_file, antenna_set_instance, t_offset=0.):
 
         if (not os.path.exists(coinc_table_file)):
             print("Coincidence table file %s does not exist"%coinc_table_file)
@@ -34,11 +34,11 @@ class coincidence_set:
         # This assumes an antenna_set instance has been created first
         if (not isinstance(antenna_set_instance, antenna_set)):
             print("Usage: co = coincidence_set(coinc_table_file, antenna_set_instance)")
-            print("where coinc_table_file is a coincidence table file,  and")
+            print("where coinc_table_file is a coincidence table file, and")
             print("antenna_set_instance is an instance of the class antenna_set")
             return
         self.ant_set = antenna_set_instance
-        print(" Reading coincidence(s): index,  peak time,  peak amplitude from file %s"%self.coinc_table_file)
+        print(" Reading coincidence(s): index, peak time, peak amplitude from file %s"%self.coinc_table_file)
         tmp = np.loadtxt(self.coinc_table_file, dtype='int', usecols=(0, 1))
         antenna_index_array = tmp[:, 0]
         coinc_index_array = tmp[:, 1]
@@ -53,7 +53,7 @@ class coincidence_set:
 
         # Filter out coincidences with small number of antennas
         # A bit of complexity here since the number of antennas involved per coincidence event
-        # will vary,  so we need to keep track of the number of antennas per event.
+        # will vary, so we need to keep track of the number of antennas per event.
         self.ncoincs = 0
         self.nantsmax = 0
         for index in coinc_indices:
@@ -61,7 +61,7 @@ class coincidence_set:
             current_length = np.sum(current_mask)
             if current_length > 3:
                 self.nants[self.ncoincs] = current_length
-                self.nantsmax = np.maximum(self.nantsmax,  current_length)
+                self.nantsmax = np.maximum(self.nantsmax, current_length)
                 self.ncoincs += 1
 
         # print(self.nants, self.ncoincs)
@@ -79,11 +79,11 @@ class coincidence_set:
             # print (mask)
             current_length = np.sum(mask)
             if current_length > 3:
-                # Next line assumes that the antenna coordinate files gives all antennas in order,  starting from antenna number=init_ant
-                # This will be needed to get antenna coordinates per coincidence event,  from the full list in antenna_set
+                # Next line assumes that the antenna coordinate files gives all antennas in order, starting from antenna number=init_ant
+                # This will be needed to get antenna coordinates per coincidence event, from the full list in antenna_set
                 self.antenna_index_array[current_coinc, :self.nants[current_coinc]] = antenna_index_array[mask]-self.ant_set.init_ant
                 self.antenna_coords_array[current_coinc, :self.nants[current_coinc], :] = self.ant_set.coordinates[antenna_index_array[mask]]
-                # Now read coincidence index (constant within the same coincidence event !),  peak time and peak amplitudes per involved antennas.
+                # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc, :self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc, :self.nants[current_coinc]] = peak_time_array[mask]
                 # self.peak_time_array[current_coinc, :self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc, :self.nants[current_coinc]])
@@ -94,7 +94,7 @@ class coincidence_set:
 
 class setup:
 
-    def __init__(self,  data_dir, recons_type,  compute_errors=False):
+    def __init__(self, data_dir, recons_type, compute_errors=False):
 
         self.recons_type = recons_type
         self.data_dir = data_dir
@@ -122,7 +122,7 @@ class setup:
             # Remove previous files
             os.remove(self.outfile)
 
-        # Prepare input files,  depending on reconstruction type
+        # Prepare input files, depending on reconstruction type
         if (self.recons_type==1 or self.recons_type==2):
             self.input_angles_file = self.data_dir+'/Rec_plane_wave_recons_py.txt'
         if (self.recons_type==2):
@@ -145,10 +145,10 @@ class setup:
     def write_adf(self, outfile, coinc, nants, params, errors, chi2):
         fid = open(outfile, 'a')
         theta, phi, delta_omega, amplitude = params
-        theta_err,  phi_err,  delta_omega_err,  amplitude_err = errors
+        theta_err, phi_err, delta_omega_err, amplitude_err = errors
         format_string = "%ld %3.0d "+"%12.5le "*8+"\n"
         fid.write(format_string%(coinc, nants, np.rad2deg(theta), np.rad2deg(theta_err), 
-            np.rad2deg(phi), np.rad2deg(phi_err), chi2,  np.nan, delta_omega, amplitude))
+            np.rad2deg(phi), np.rad2deg(phi_err), chi2, np.nan, delta_omega, amplitude))
         fid.close()
 
 
@@ -156,7 +156,7 @@ def main():
 
     if (len(sys.argv) != 3):
         print("Usage: python recons.py <recons_type> <data_dir> ")
-        print("recons_type = 0 (plane wave),  1 (spherical wave),  2 (ADF)")
+        print("recons_type = 0 (plane wave), 1 (spherical wave), 2 (ADF)")
         print("data_dir is the directory containing the coincidence files")
         sys.exit(1)
 
@@ -168,7 +168,7 @@ def main():
 
     # Read antennas indices and coordinates
     an = antenna_set(data_dir+'/coord_antennas.txt')
-    # Read coincidences (antenna index,  coincidence index,  peak time,  peak amplitude)
+    # Read coincidences (antenna index, coincidence index, peak time, peak amplitude)
     # Routine only keep valid number of antennas (>3)
     co = coincidence_set(data_dir+'/Rec_coinctable.txt', an)
     print("Number of coincidences = ", co.ncoincs)
@@ -184,14 +184,14 @@ def main():
             args = (co.antenna_coords_array[current_recons, :co.nants[current_recons], :], co.peak_time_array[current_recons, :co.nants[current_recons]])
 
             # res = so.minimize(PWF_loss, params_in, args=args, method='BFGS')
-            # res = so.minimize(PWF_loss, params_in,  jac=PWF_grad,  args=args,  method='L-BFGS-B',  bounds=bounds)
-            ## res = so.minimize(PWF_loss,  params_in,  args=args,  bounds=bounds,  method='Nelder-Mead')
+            # res = so.minimize(PWF_loss, params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
+            ## res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='Nelder-Mead')
             res = PWF_minimize_alternate_loss(*args)
             #res = so.minimize(PWF_loss, res.x, args=(co.antenna_coords_array[current_recons, :], co.peak_time_array[current_recons, :], 1, True), method='L-BFGS-B')
             
             ## params_out = res.x
             params_out = res
-            # compute errors with numerical estimate of Hessian matrix,  inversion and sqrt of diagonal terms
+            # compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
             if (st.compute_errors):
                 args=(co.antenna_coords_array[current_recons, :], co.peak_time_array[current_recons, :])
                 hess = nd.Hessian(PWF_loss) (params_out, *args)
@@ -211,7 +211,7 @@ def main():
     if (st.recons_type==1):
         # SWF model. We assume that PWF reconstrution was run first. Check if corresponding result file exists.
         if not os.path.exists(st.input_angles_file):
-            print("SWF reconstruction was requested,  while input angles file %s does not exists."%st.input_angles_file)
+            print("SWF reconstruction was requested, while input angles file %s does not exists."%st.input_angles_file)
             return
         fid_input_angles = open(st.input_angles_file, 'r')
         for current_recons in range(co.ncoincs):
@@ -220,21 +220,21 @@ def main():
             theta_in = float(l[2])
             phi_in = float(l[4])
             #bounds = [[np.deg2rad(theta_in-1), np.deg2rad(theta_in+1)], 
-            #          [np.deg2rad(phi_in-1), np.deg2rad(phi_in+1)],  
+            #          [np.deg2rad(phi_in-1), np.deg2rad(phi_in+1)], 
             #          [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)), -6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))], 
             #          [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)), 0]]
             bounds = [[np.deg2rad(theta_in-1), np.deg2rad(theta_in+1)], 
-                      [np.deg2rad(phi_in-1), np.deg2rad(phi_in+1)],  
+                      [np.deg2rad(phi_in-1), np.deg2rad(phi_in+1)], 
                       [0., 100000.], 
                       [-100000., 0.]]
             params_in = np.array(bounds).mean(axis=1)
             print("params_in = ", params_in)
-            print("bounds = ",  bounds)
+            print("bounds = ", bounds)
 
             args=(co.antenna_coords_array[current_recons, :co.nants[current_recons], :], co.peak_time_array[current_recons, :co.nants[current_recons]], False)
             # args=(co.antenna_coords_array[current_recons, :], co.peak_time_array[current_recons, :])
 
-            # Test value of gradient,  compare to finite difference estimate
+            # Test value of gradient, compare to finite difference estimate
             # print(nd.Gradient(SWF_loss, order=4)(params_in, *args))
             # print(SWF_grad(params_in, *args))
             ## method = 'L-BFGS-B'
@@ -245,7 +245,7 @@ def main():
             #res = so.minimize(SWF_loss, params_in, jac=SWF_grad, args=args, method='BFGS')
             params_out = res.x
 
-            # Compute errors with numerical estimate of Hessian matrix,  inversion and sqrt of diagonal terms
+            # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
             if (st.compute_errors):
                 args=(co.antenna_coords_array[current_recons, :], co.peak_time_array[current_recons, :])
                 hess = nd.Hessian(SWF_loss)(params_out, *args)
@@ -268,10 +268,10 @@ def main():
     if (st.recons_type==2):
         # ADF model. We assume that PWF and SWF reconstructions were run first. Check if corresponding result files exist.
         if not os.path.exists(st.input_angles_file):
-            print("ADF reconstruction was requested,  while input input angles file %s dos not exists."%st.input_angles_file)
+            print("ADF reconstruction was requested, while input input angles file %s dos not exists."%st.input_angles_file)
             return
         if not os.path.exists(st.input_xmax_file):
-            print ("ADF reconstruction was requested,  while input xmax file %s does not exists."%st.input_xmax_file)
+            print ("ADF reconstruction was requested, while input xmax file %s does not exists."%st.input_xmax_file)
             return
         fid_input_angles = open(st.input_angles_file, "r")
         fid_input_xmax = open(st.input_xmax_file, "r")
@@ -287,18 +287,18 @@ def main():
                       [0.1, 3.0], 
                       [1e6, 1e10]]
             params_in = np.array(bounds).mean(axis=1) # Central values
-            ## Refine guess for amplitude,  based on maximum of peak values ##
+            ## Refine guess for amplitude, based on maximum of peak values ##
             lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
             params_in[3] = co.peak_amp_array[current_recons, :].max() * lant
             print ('amp_guess = ', params_in[3])
             ###################
-            args = (co.peak_amp_array[current_recons, :co.nants[current_recons]], co.antenna_coords_array[current_recons, :co.nants[current_recons], :], Xmax,  0.01,  True)
+            args = (co.peak_amp_array[current_recons, :co.nants[current_recons]], co.antenna_coords_array[current_recons, :co.nants[current_recons], :], Xmax, 0.01, True)
             # res = so.minimize(ADF_loss, params_in, args=(co.peak_amp_array[current_recons, :], co.antenna_coords_array[current_recons, :], Xmax), 
-            #                   method='L-BFGS-B')#,  bounds=bounds)
-            res = so.minimize(ADF_loss, params_in, args=args,  method='BFGS')
+            #                   method='L-BFGS-B')#, bounds=bounds)
+            res = so.minimize(ADF_loss, params_in, args=args, method='BFGS')
             print (res)
             params_out = res.x
-            # Compute errors with numerical estimates of Hessian matrix,  inversion and sqrt of diagonal terms
+            # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
             # hess = nd.Hessian(ADF_loss)(params_out, *args)
             # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
             errors = np.array([np.nan]*4)
