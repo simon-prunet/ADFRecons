@@ -58,7 +58,7 @@ def ZHSEffectiveRefractionIndex(X0,Xa):
         # Vector between antenna and emission point
         U = Xa-X0
         # Divide into pieces shorter than 10km
-        nint = np.int(modr/2e4)+1
+        nint = np.int32(modr/2e4)+1
         K = U/nint
 
         # Current point coordinates and altitude
@@ -283,9 +283,9 @@ def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
         print("Shapes of tants and Xants are incompatible", tants.shape, Xants.shape)
         return None
     # Compute A matrix (3x3) and b (3-)vector, see above
-    PXT = Xants - Xants.mean(axis=0) # P is the centering projector, XT=Xants
+    PXT = Xants - Xants.mean(axis=0)  # P is the centering projector, XT=Xants
     A = np.dot(Xants.T, PXT)
-    b = np.dot(Xants.T, tants-tants.mean(axis=0))
+    b = np.dot(Xants.T, tants-tants.mean(axis=0)) / cr
     # Diagonalize A, compute projections of b onto eigenvectors
     d, W = np.linalg.eigh(A)
     beta = np.dot(b, W)
@@ -536,7 +536,7 @@ def SWF_loss(params_array, Xants, tants, verbose=False, log = False, cr=1.0):
 
 
     if (Xants.shape[0] != tants.size):
-        print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
+        print("Shapes of tants and Xants are incompatible", tants.shape, Xants.shape)
         return None
 
     if (log is True):
@@ -544,18 +544,18 @@ def SWF_loss(params_array, Xants, tants, verbose=False, log = False, cr=1.0):
         theta, phi, sm, logdf = params_array
         df = 10.**logdf
         r_xmax = (df+sm)/2.
-        t_s    = (-df+sm)/2.
-        params = np.array([theta,phi,r_xmax,t_s])
+        t_s = (-df+sm)/2.
+        params = np.array([theta, phi, r_xmax, t_s])
     else:
         params = params_array.copy()
-    res = SWF_residuals(params,Xants,tants,verbose=verbose,cr=cr)
+    res = SWF_residuals(params, Xants, tants, verbose=verbose, cr=cr)
 
-    chi2 = ( res**2 ).sum()
- 
+    chi2 = (res**2).sum()
+
     if (verbose):
-        print("theta,phi,r_xmax,t_s = ",*params)
-        print ("Chi2 = ",chi2)
-    return(chi2)
+        print("theta,phi,r_xmax,t_s = ", *params)
+        print ("Chi2 = ", chi2)
+    return (chi2)
 
 #@njit(**kwd,parallel=False)
 def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
@@ -581,7 +581,7 @@ def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
         print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
         return None
   
-    res = cr * (tants - SWF_model(params,Xants,verbose=verbose,cr=cr))
+    res = cr * (tants - SWF_model(params, Xants, verbose=verbose, cr=cr))
 
     return(res)
 

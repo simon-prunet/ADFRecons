@@ -6,6 +6,7 @@ import scipy.optimize as so
 import numdifftools as nd
 c_light = 2.997924580e8
 
+
 class antenna_set:
 
     def __init__(self,  position_file):
@@ -90,6 +91,7 @@ class coincidence_set:
                 current_coinc += 1
         return
 
+
 class setup:
 
     def __init__(self,  data_dir, recons_type,  compute_errors=False):
@@ -148,6 +150,7 @@ class setup:
         fid.write(format_string%(coinc, nants, np.rad2deg(theta), np.rad2deg(theta_err), 
             np.rad2deg(phi), np.rad2deg(phi_err), chi2,  np.nan, delta_omega, amplitude))
         fid.close()
+
 
 def main():
 
@@ -309,4 +312,3 @@ def main():
 if __name__ == '__main__':
 
     main()
-
