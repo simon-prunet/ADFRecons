@@ -12,7 +12,7 @@ c_light = 2.997924580e8
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
-groundAltitude = 1086.0
+groundAltitude = 1207.0 # 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
@@ -507,6 +507,9 @@ def SWF_model(params, Xants, verbose=False, cr=1.0):
 
     return (tants)
 
+def SWF_model_iminuit(XantsT,params):
+    return SWF_model(params,XantsT.T)
+
 
 
 #@njit(**kwd,parallel=False)
@@ -579,7 +582,7 @@ def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     return(res)
 
-#@njit(**kwd)
+@njit(**kwd)
 def SWF_simulation(params, Xants, sigma_t = 5e-9, iseed=1234, cr=1.0):
     '''
     Computes simulated wavefront timings for the spherical case.
