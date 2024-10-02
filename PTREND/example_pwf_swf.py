@@ -1,7 +1,6 @@
 import numpy as np
 import wavefronts_pwf as pwf
 import wavefronts_swf as swf
-import wavefronts_swf_dev as swfdev
 
 import json
 from scipy import interpolate as interp
@@ -83,11 +82,11 @@ yeff = np.sin(phi_pwf_rad) * dmax
 zeff = xmaxz
 
 initial_guess = np.array([xeff, yeff, zeff, t_ants.min()])
+initial_guess2 = np.array([xeff, yeff, zeff])
+
 
 swf_fit = swf.get_SWF_fit(x_ants, t_ants, initial_guess, sigma_t=sigma_timing, ncall=200)
-swf_fit2 = swfdev.get_SWF_fit_v2(x_ants, t_ants-t_ants[0], initial_guess[0:3], sigma_t=sigma_timing*np.sqrt(2), ncall=200)
-swf_fit3 = swf.get_SWF_fit_v2(x_ants, t_ants, initial_guess[0:3], sigma_t=sigma_timing, ncall=200)
-
+swf_fit2 = swf.get_SWF_fit_v2(x_ants, t_ants, initial_guess2, sigma_t=sigma_timing, ncall=200)
 
 
 
@@ -101,5 +100,6 @@ K_recons_swf2 /= np.linalg.norm(K_recons_swf2)
 
 tt, pp = utils.k_to_theta_phi(K_recons_swf)
 tt2, pp2 = utils.k_to_theta_phi(K_recons_swf2)
+
 print('theta_gt = {}, theta_pwf = {}, theta_swf = {},  theta_swf2 = {}'.format(theta_gt, theta_pwf_rad*180/np.pi, tt * 180/np.pi, tt2 * 180/np.pi ))
 print('phi_gt = {}, phi_pwf = {}, phi_swf = {}, phi_swf2 = {}'.format(phi_gt, phi_pwf_rad*180/np.pi, pp * 180/np.pi, pp2 * 180/np.pi))
