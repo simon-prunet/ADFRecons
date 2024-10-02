@@ -1,6 +1,8 @@
 import numpy as np
 import wavefronts_pwf as pwf
 import wavefronts_swf as swf
+import wavefronts_swf_dev as swfdev
+
 import json
 from scipy import interpolate as interp
 import os
@@ -13,7 +15,7 @@ threshold = 75  # uV/m
 
 
 
-####   The line below load an events from the DC2 library
+#  The lines below load an events from the DC2 library
 arr = np.load('./PWF_SWF_data/9596.npy')
 with open('./PWF_SWF_data/9596.json', 'r') as f:
     event_params = json.load(f)
@@ -83,11 +85,21 @@ zeff = xmaxz
 initial_guess = np.array([xeff, yeff, zeff, t_ants.min()])
 
 swf_fit = swf.get_SWF_fit(x_ants, t_ants, initial_guess, sigma_t=sigma_timing, ncall=200)
+swf_fit2 = swfdev.get_SWF_fit_v2(x_ants, t_ants-t_ants[0], initial_guess[0:3], sigma_t=sigma_timing*np.sqrt(2), ncall=200)
+swf_fit3 = swf.get_SWF_fit_v2(x_ants, t_ants, initial_guess[0:3], sigma_t=sigma_timing, ncall=200)
+
+
+
 
 K_recons_swf = np.array([-swf_fit[0]+shc_x, -swf_fit[1]+shc_y, -swf_fit[2]+shc_z])
 K_recons_swf /= np.linalg.norm(K_recons_swf)
 
-tt, pp = utils.k_to_theta_phi(K_recons_swf)
 
-print('theta_gt = {}, theta_pwf = {}, theta_swf = {}'.format(theta_gt, theta_pwf_rad*180/np.pi, tt * 180/np.pi))
-print('phi_gt = {}, phi_pwf = {}, phi_swf = {}'.format(phi_gt, phi_pwf_rad*180/np.pi, pp * 180/np.pi))
+K_recons_swf2 = np.array([-swf_fit2[0]+shc_x, -swf_fit2[1]+shc_y, -swf_fit2[2]+shc_z])
+K_recons_swf2 /= np.linalg.norm(K_recons_swf2)
+
+
+tt, pp = utils.k_to_theta_phi(K_recons_swf)
+tt2, pp2 = utils.k_to_theta_phi(K_recons_swf2)
+print('theta_gt = {}, theta_pwf = {}, theta_swf = {},  theta_swf2 = {}'.format(theta_gt, theta_pwf_rad*180/np.pi, tt * 180/np.pi, tt2 * 180/np.pi ))
+print('phi_gt = {}, phi_pwf = {}, phi_swf = {}, phi_swf2 = {}'.format(phi_gt, phi_pwf_rad*180/np.pi, pp * 180/np.pi, pp2 * 180/np.pi))
