@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 from numba import njit, float64, prange
 from scipy.spatial.transform import Rotation as R
 from scipy.optimize import fsolve
@@ -23,8 +24,6 @@ Bvec = np.array([np.sin(B_inc)*np.cos(B_dec),np.sin(B_inc)*np.sin(B_dec),np.cos(
 kwd = {"fastmath": {"reassoc", "contract", "arcp"}}
 
 # Simple numba example
-
-
 @njit(**kwd)
 def dotme(x,y,z):
     res =  np.dot(x,x)
@@ -222,7 +221,6 @@ def compute_alpha(eta, K):
     U = np.array([ce*K_plan[0]+se*K_plan[1],-se*K_plan[0]+ce*K_plan[1],0.])
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
-    alpha = np.pi-alpha
     return(alpha)
 
 
@@ -256,7 +254,6 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
     U = np.array([ce*K_plan[0]+se*K_plan[1],-se*K_plan[0]+ce*K_plan[1],0.])
     # Compute angle between shower direction and (horizontal) direction to observer
     alpha = np.arccos(np.dot(K,U))
-    alpha = np.pi - alpha
 
 
     # Now solve for omega
@@ -280,63 +277,7 @@ def compute_Cerenkov(eta, K, xmaxDist, Xmax, delta, groundAltitude):
 # SWF: Spherical wave function
 # ADF: Amplitude Distribution Function (see Valentin Decoene's thesis)
 
-@njit(**kwd)
-def PWF_model(params, Xants, cr=1.0):
-    '''
-    Generates plane wavefront timings
-    '''
-    theta, phi = params
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp=np.sin(phi)
-    K = np.array([st*cp,st*sp,ct])
-    dX = Xants - np.array([0.,0.,groundAltitude])
-    tants = np.dot(dX,K) / cr 
- 
-    return (tants)
 
-
-def PWF_loss(params, Xants, tants, verbose=False, cr=1.0):
-    '''
-    Defines Chi2 by summing model residuals
-    over antenna pairs (i,j):
-    loss = \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
-    where:
-    params=(theta, phi): spherical coordinates of unit shower direction vector K
-    Xants are the antenna positions (shape=(nants,3))
-    tants are the antenna arrival times of the wavefront (trigger time, shape=(nants,))
-    cr is radiation speed, by default 1 since time is expressed in m.
-    '''
-
-    theta,phi = params
-    nants = tants.shape[0]
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
-    K = np.array([st*cp,st*sp,ct])
-    # Make sure tants and Xants are compatible
-    if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
-        return None
-    # Use numpy outer methods to build matrix X_ij = x_i -x_j
-    xk = np.dot(Xants,K)
-    DXK = np.subtract.outer(xk,xk)
-    DT  = np.subtract.outer(tants,tants)
-    chi2 = ( (DXK - cr*DT)**2 ).sum() / 2. # Sum over upper triangle, diagonal is zero because of antisymmetry of DXK, DT
-    if verbose:
-        print("params = ",np.rad2deg(params))
-        print("Chi2 = ",chi2)
-    return(chi2)
-
-def PWF_alternate_loss(params, Xants, tants, verbose=False, cr=1.0):
-    '''
-    Defines Chi2 by summing model residuals over individual antennas,
-    after maximizing likelihood over reference time.
-    '''
-    nants = tants.shape[0]
-    if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
-        return None
-    # Make sure tants and Xants are compatible
-    residuals = PWF_residuals(params,Xants,tants,verbose=verbose,cr=cr)
-    chi2 = (residuals**2).sum()
-    return(chi2)
 
 def PWF_minimize_alternate_loss(Xants, tants, verbose=False, cr=1.0):
     '''
@@ -482,116 +423,8 @@ def PWF_simulation(params, Xants, sigma_t = 5e-9, iseed=None, cr=1.0):
 
 
 
-def PWF_grad(params, Xants, tants, verbose=False, cr=1.0):
-
-    '''
-    Gradient of PWF_loss, with respect to theta, phi
-    '''
-    theta, phi = params
-    nants = tants.shape[0]
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
-    K = np.array([st*cp,st*sp,ct])
-
-    xk = np.dot(Xants,K)
-    # Use numpy outer method to build matrix X_ij = x_i - x_j
-    DXK = np.subtract.outer(xk,xk)
-    DT  = np.subtract.outer(tants,tants)
-    RHS = DXK-cr*DT
-
-    # Derivatives of K w.r.t. theta, phi
-    dKdtheta = np.array([ct*cp,ct*sp,-st])
-    dKdphi   = np.array([-st*sp,st*cp,0.])
-    xk_theta = np.dot(Xants,dKdtheta)
-    xk_phi   = np.dot(Xants,dKdphi)
-    # Use numpy outer method to build matrix X_ij = x_i - x_j
-    DXK_THETA = np.subtract.outer(xk_theta,xk_theta)
-    DXK_PHI   = np.subtract.outer(xk_phi,xk_phi)
-
-    jac_theta = np.sum(DXK_THETA*RHS) # Factor of 2 of derivatives compensates ratio of sum to upper diag sum
-    jac_phi   = np.sum(DXK_PHI*RHS)
-    if verbose:
-        print("Jacobian = ",jac_theta,jac_phi)
-    return np.array([jac_theta,jac_phi])
-
-def PWF_hess(params, Xants, tants, verbose=False, cr=1.0):
-    '''
-    Hessian of PWF_loss, with respect to theta, phi
-    '''
-    theta, phi = params
-    nants = tants.shape[0]
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
-    K = np.array([st*cp,st*sp,ct])
-
-    xk = np.dot(Xants,K)
-    # Use numpy outer method to build matrix X_ij = x_i - x_j
-    DXK = np.subtract.outer(xk,xk)
-    DT  = np.subtract.outer(tants,tants)
-    RHS = DXK-cr*DT
-
-    # Derivatives of K w.r.t. theta, phi
-    dK_dtheta = np.array([ct*cp,ct*sp,-st])
-    dK_dphi   = np.array([-st*sp,st*cp,0.])
-    d2K_dtheta= np.array([-st*cp,-st*sp,-ct])
-    d2K_dphi  = np.array([-st*cp,-st*sp,0.])
-    d2K_dtheta_dphi = np.array([-ct*sp,ct*cp,0.]) 
-
-    xk_theta = np.dot(Xants,dK_dtheta)
-    xk_phi   = np.dot(Xants,dK_dphi)
-    xk2_theta = np.dot(Xants,d2K_dtheta)
-    xk2_phi   = np.dot(Xants,d2K_dphi)
-    xk2_theta_phi = np.dot(Xants,d2K_dtheta_dphi)
-
-    #Use numpy outer method to buid matrix X_ij = x_i - x_j
-    DXK_THETA = np.subtract.outer(xk_theta,xk_theta)
-    DXK_PHI   = np.subtract.outer(xk_phi,xk_phi)
-    DXK2_THETA = np.subtract.outer(xk2_theta,xk2_theta)
-    DXK2_PHI   = np.subtract.outer(xk2_phi,xk2_phi)
-    DXK2_THETA_PHI = np.subtract.outer(xk2_theta_phi,xk2_theta_phi)
-
-    hess_theta2 = np.sum(DXK2_THETA*RHS + DXK_THETA**2)
-    hess_phi2   = np.sum(DXK2_PHI*RHS + DXK_PHI**2)
-    hess_theta_phi = np.sum(DXK2_THETA_PHI*RHS + DXK_THETA*DXK_PHI)
-
-    return (np.array([[hess_theta2, hess_theta_phi], [hess_theta_phi, hess_phi2]]))
-
-
-###################################################
-# This one is slower and not used anymore
-@njit(**kwd)
-def PWF_loss_nonp(params, Xants, tants, verbose=False, cr=1.0):
-    '''
-    Defines Chi2 by summing model residuals
-    over antenna pairs (i,j):
-    loss = \sum_{i>j} ((Xants[i,:]-Xants[j,:]).K - cr(tants[i]-tants[j]))**2
-    where:
-    params=(theta, phi): spherical coordinates of unit shower direction vector K
-    Xants are the antenna positions (shape=(nants,3))
-    tants are the antenna arrival times of the wavefront (trigger time, shape=(nants,))
-    cr is radiation speed, by default 1 since time is expressed in m.
-    '''
-
-    theta,phi = params
-    nants = tants.shape[0]
-    ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
-    K = np.array([st*cp,st*sp,ct])
-    # Make sure tants and Xants are compatible
-    if (Xants.shape[0] != nants):
-        print("Shapes of tants and Xants are incompatible",tants.shape,Xants.shape)
-        return None
-    tmp = 0.
-    for j in range(nants-1):
-        for i in range(j+1,nants):
-            res = np.dot(Xants[j,:]-Xants[i,:],K)-cr*(tants[j]-tants[i])
-            tmp += res*res
-    chi2 = tmp
-    if verbose:
-        print("Chi2 = ",chi2)
-    return (chi2)
-###################################################
-
-
 @njit(**kwd,parallel=False)
-def SWF_loss(params, Xants, tants, Xcore, verbose=False, log = False, cr=1.0):
+def SWF_loss(params, Xants, tants, verbose=False, log = False, cr=1.0):
 
     '''
     Defines Chi2 by summing model residuals over antennas  (i):
@@ -622,7 +455,7 @@ def SWF_loss(params, Xants, tants, Xcore, verbose=False, log = False, cr=1.0):
     ct = np.cos(theta); st = np.sin(theta); cp = np.cos(phi); sp = np.sin(phi)
     K = np.array([st*cp,st*sp,ct])
     Xmax = -r_xmax * K + np.array([0.,0.,groundAltitude]) # Xmax is in the opposite direction to shower propagation.
-    #Xmax = -r_xmax * K + Xcore #Xcore is chosen taking the mean postion of triggered antennas
+
     # Make sure Xants and tants are compatible
     if (Xants.shape[0] != nants):
         print("Shapes of tants and Xants are incompatible",tants.shape, Xants.shape)
@@ -1383,7 +1216,7 @@ def ADF_3D_parameters(params, Aants, Xants, Xmax, asym_coeff=0.01):
         omega_cr_analytic_effectif_array[i] = omega_cr_analytic_effectif
     return(eta_array, omega_array, omega_cr_array, omega_cr_analytic_array, omega_cr_analytic_effectif_array, n0_array, n1_array, alpha_array, master_equation_array)    
 
-@njit(**kwd)
+#@njit(**kwd)
 def ADF_3D_parameters_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0.01):
     
     '''
@@ -1432,14 +1265,9 @@ def ADF_3D_parameters_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0
     res = np.zeros(nants)
     eta_array = np.zeros(nants)
     omega_array = np.zeros(nants)
-    omega_cr_array = np.zeros(nants)
-    n2_array = np.zeros(nants)
-    n1_array = np.zeros(nants)
-    delta_n_array = np.zeros(nants)
-    alpha_array = np.zeros(nants)
-    master_equation_array = np.zeros(nants)
     omega_cr_analytic_array = np.zeros(nants)
     omega_cr_analytic_effectif_array = np.zeros(nants)
+    omega_cerenkov_simu_array = np.zeros(nants)
     Xb = Xmax - 2.0e3*K
     Xa = Xmax + 2.0e3*K
     for i in range(nants):
@@ -1453,15 +1281,8 @@ def ADF_3D_parameters_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0
         omega = np.arccos(np.dot(K,dX)/l_ant)
 
         omega_cr = compute_Cerenkov_3D_before_after_Xmax(Xants[i,:],K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        alpha = compute_alpha_3D(Xants[i,:], K, groundAltitude)
-        U = compute_U(Xants[i,:], groundAltitude)
-        master_equation = compute_delay_3D_master_equation_before_after_Xmax(omega, Xmax, Xa, Xb, Xants[i,:], U, K, alpha, 2.0e3, XmaxDist)
-        #n0, n1 = compute_refractive_index_at_cerenkov_angle(xi,K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        n_average_xa = ZHSEffectiveRefractionIndex(Xa, Xants[i,:])
-        n_average_xb = ZHSEffectiveRefractionIndex(Xb, Xants[i,:])
-        omega_cr_analytic_effectif = ZHSEffectiveRefractionIndex(Xmax, np.array([0,0, groundAltitude]))
-        delta_n =  n_average_xa - n_average_xb 
         omega_cr_analytic = np.arccos(1./RefractionIndexAtPosition(Xmax))
+        omega_cr_analytic_effectif = np.arccos(1./ZHSEffectiveRefractionIndex(Xmax, np.array([0, 0, groundAltitude])))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
@@ -1473,16 +1294,13 @@ def ADF_3D_parameters_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0
         res[i]= (Aants[i]-adf)
         eta_array[i] = eta
         omega_array[i] = omega
-        omega_cr_array[i] = omega_cr
-        n2_array[i] = n_average_xa
-        delta_n_array[i] = delta_n
-        alpha_array[i] = alpha
-        master_equation_array[i] = master_equation
         omega_cr_analytic_array[i] = omega_cr_analytic
         omega_cr_analytic_effectif_array[i] = omega_cr_analytic_effectif
-    return(eta_array, omega_array, omega_cr_array, omega_cr_analytic_array, omega_cr_analytic_effectif_array, n2_array, delta_n_array, alpha_array, master_equation_array)  
+        omega_cerenkov_simu_array[i]= omega_cr
 
-@njit(**kwd)
+    return(eta_array, omega_array, omega_cerenkov_simu_array, omega_cr_analytic_array, omega_cr_analytic_effectif_array)  
+
+#@njit(**kwd, nopython=True)
 def ADF_3D_loss_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0.01, verbose=False):
     
     '''
@@ -1539,9 +1357,8 @@ def ADF_3D_loss_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0.01, v
         l_ant = np.linalg.norm(dX)
         eta = np.arctan2(dX_sp[1],dX_sp[0])
         omega = np.arccos(np.dot(K,dX)/l_ant)
-
+        
         omega_cr = compute_Cerenkov_3D_before_after_Xmax(Xants[i,:],K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
@@ -1556,7 +1373,7 @@ def ADF_3D_loss_before_after_Xmax(params, Aants, Xants, Xmax, asym_coeff=0.01, v
         print ("params = ",np.rad2deg(params[:2]),params[2:]," Chi2 = ",chi2)
     return(chi2)
 
-@njit(**kwd)
+#@njit(**kwd,nopython=True)
 def ADF_3D_model_before_after_Xmax(params, Xants, Xmax, asym_coeff=0.01):
     
     '''
@@ -1614,7 +1431,6 @@ def ADF_3D_model_before_after_Xmax(params, Xants, Xmax, asym_coeff=0.01):
         omega = np.arccos(np.dot(K,dX)/l_ant)
 
         omega_cr = compute_Cerenkov_3D_before_after_Xmax(Xants[i,:],K,XmaxDist,Xmax,2.0e3,groundAltitude)
-        # omega_cr = np.arccos(1./RefractionIndexAtPosition(Xmax))
         # print ("omega_cr = ",omega_cr)
 
         # Distribution width. Here rescaled by ratio of cosines (why ?)
@@ -1647,12 +1463,8 @@ def compute_Cerenkov_3D(Xant, K, xmaxDist, Xmax, delta, groundAltitude):
 
     # Compute coordinates of point before Xmax
     Xb = Xmax - delta*K
-    #dXcore = Xant - np.array([0.,0.,groundAltitude])
-    # Core of shower, taken at groundAltitude for reference
-    # Ground altitude might be computed later as a derived quantity, e.g. 
-    # as the median of antenna altitudes.
-    Xcore = Xmax + xmaxDist * K
-    dXcore = Xant - Xcore
+    dXcore = Xant - np.array([0.,0.,groundAltitude])
+
     # Direction vector to observer's position from shower core
     # This is a bit dangerous for antennas numerically close to shower core... 
     U = dXcore / np.linalg.norm(dXcore)
@@ -1689,7 +1501,7 @@ def compute_U(Xant, groundAltitude):
 @njit(**kwd)
 def compute_delay_3D(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
 
-    X = compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha)
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
     # print('omega = ',omega,'X_obs = ',X)
     n0 = ZHSEffectiveRefractionIndex(Xmax,X)
     # print('n0 = ',n0)
@@ -1702,7 +1514,7 @@ def compute_delay_3D(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
 @njit(**kwd)
 def compute_delay_3D_master_equation(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist):
 
-    X = compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha)
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
     # print('omega = ',omega,'X_obs = ',X)
     n0 = ZHSEffectiveRefractionIndex(Xmax,X)
     # print('n0 = ',n0)
@@ -1713,14 +1525,14 @@ def compute_delay_3D_master_equation(omega,Xmax,Xb,Xant,U,K,alpha,delta,xmaxDist
     return(res)
 
 @njit(**kwd)
-def compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha):
+def compute_observer_position_3D(omega,Xmax,Xant,U,K):
     '''
     Given angle omega between shower direction (K) and line joining Xmax and observer's position,
     Xmax position and Xant antenna position, and unit vector (U) to observer from shower core, compute
     coordinates of observer
     '''
 
-    # Compute rotation axis. Make sure it is normalized. This could be done in compute_Cerenkov3D and passed along.
+    # Compute rotation axis. Make sure it is normalized
     Rot_axis = np.cross(U,K)
     Rot_axis /= np.linalg.norm(Rot_axis)
     # Compute rotation matrix from Rodrigues formula
@@ -1733,12 +1545,8 @@ def compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha):
     # Dir_obs  = Rotation.apply(K)
     Dir_obs = np.dot(Rotmat,K)
     # Compute observer's position
-    # this assumed coincidence was computed at antenna altitude)
-    # t = (Xant[2] - Xmax[2])/Dir_obs[2]
-    # This assumes coincidence is computed at fixed alpha, i.e. along U, starting from Xcore
-    t = np.sin(alpha)/np.sin(alpha+omega) * xmaxDist
+    t = (Xant[2] - Xmax[2])/Dir_obs[2]
     X = Xmax + t*Dir_obs
-
     return (X)
 
     #def logprob(angles, coords, times):
@@ -1748,7 +1556,7 @@ def compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha):
 @njit(**kwd)
 def compute_delay_3D_before_after_Xmax(omega,Xmax, Xa, Xb,Xant,U,K,alpha,delta,xmaxDist):
 
-    X = compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha)
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
     # print('omega = ',omega,'X_obs = ',X)
     n2 = ZHSEffectiveRefractionIndex(Xa,X)
     # print('n0 = ',n0)
@@ -1761,7 +1569,7 @@ def compute_delay_3D_before_after_Xmax(omega,Xmax, Xa, Xb,Xant,U,K,alpha,delta,x
 @njit(**kwd)
 def compute_delay_3D_master_equation_before_after_Xmax(omega, Xmax, Xa, Xb,Xant,U,K,alpha,delta,xmaxDist):
 
-    X = compute_observer_position_3D(omega,Xmax,Xant,U,K, xmaxDist, alpha)
+    X = compute_observer_position_3D(omega,Xmax,Xant,U,K)
     # print('omega = ',omega,'X_obs = ',X)
     n2 = ZHSEffectiveRefractionIndex(Xa, X)
     # print('n0 = ',n0)
@@ -1776,7 +1584,7 @@ def compute_Cerenkov_3D_before_after_Xmax(Xant, K, xmaxDist, Xmax, delta, ground
 
     '''
     Solve for Cerenkov angle by minimizing
-    time delay between light rays originating from Xb and Xa and arriving
+    time delay between light rays originating from Xb and Xmax and arriving
     at observer's position. 
     Xant:  (single) antenna position 
     K:     direction vector of shower
@@ -1794,12 +1602,7 @@ def compute_Cerenkov_3D_before_after_Xmax(Xant, K, xmaxDist, Xmax, delta, ground
     # Compute coordinates of point after Xmax
     Xa = Xmax +delta*K
 
-    #dXcore = Xant - np.array([0.,0.,groundAltitude])
-    # Core of shower, taken at groundAltitude for reference
-    # Ground altitude might be computed later as a derived quantity, e.g. 
-    # as the median of antenna altitudes.
-    Xcore = Xmax + xmaxDist * K 
-    dXcore = Xant - Xcore
+    dXcore = Xant - np.array([0.,0.,groundAltitude])
 
     # Direction vector to observer's position from shower core
     # This is a bit dangerous for antennas numerically close to shower core... 
@@ -1819,31 +1622,3 @@ def compute_Cerenkov_3D_before_after_Xmax(Xant, K, xmaxDist, Xmax, delta, ground
     # omega_cr = omega_cr_guess
     return(omega_cr)
 
-def logprob(angles, *args):
-    return -0.5*PWF_loss(angles, *args)
-
-def logprob_alternate(angles, *args):
-    return -0.5*PWF_alternate_loss(angles, *args)
-
-
-def MCMC_minimizer(logprob, args):
-    #np.random.seed(42)
-    ndim, nwalkers = 2, 10
-    sampler = EnsembleSampler(nwalkers, ndim, logprob, args=args)
-    #thetas = np.random.rand(10)*np.pi/2 + np.pi/2
-    thetas = np.random.rand(10)*np.pi
-    phis = np.random.rand(10)*2.*np.pi
-    p0 = np.vstack((thetas, phis)).T
-    state  = sampler.run_mcmc(p0, 100)
-    sampler.reset()
-    sampler.run_mcmc(state, 10000)
-    samples = sampler.get_chain(flat=True, thin=25)
-    #print(samples)
-    #logprobs = sampler.get_log_prob(flat=True, thin=25)
-    #mask= (samples[:,0]>np.pi/2)*(samples[:,0]<np.pi)*(samples[:,1]>0)*(samples[:,1]<2*np.pi)
-    mask= (samples[:,0]>0)*(samples[:,0]<np.pi)*(samples[:,1]>0)*(samples[:,1]<2*np.pi)
-    med = np.median(samples[mask,:], axis=0)
-    #med = np.median(samples, axis=0)
-    #print(thetas, phis)
-    #print(np.rad2deg(med))
-    return med

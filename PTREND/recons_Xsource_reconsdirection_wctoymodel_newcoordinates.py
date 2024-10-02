@@ -1,8 +1,6 @@
 import numpy as np
-from wavefronts import *
-from recons_PWF import *
-from recons_swf_bis import *
-from ADF_Valentin import *
+from wavefronts_Xsource_reconsdirection_wctoymodel import *
+import wavefronts_PWF as pwf
 import sys
 import os
 import scipy.optimize as so
@@ -11,16 +9,30 @@ from emcee import EnsembleSampler
 import time
 import signal
 import pandas as pd
+from iminuit import minimize
 
+'''
+In this version of the reconstruction: 
+we use the reconstructed parameters for the direction from the PWF theta_in and phi_in for ADF.
+We use the reconstructed Xsource from spherical reconstruction.
+We compute the Cherenkov angle from the toy model (taking the two emission points around Xsource).
+
+For ADF: version 3D with points before and after Xsource
+'''
 
 c_light = 2.997924580e8
 
-groundAltitude = 1086.0
+#groundAltitude = 1205.0 #gp13
+#groundAltitude = 1086.0 #hdf5
+groundAltitude = 1264 #DC2
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 
-output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_starshape/nonoise_trueparameters_50100MHz/'
-
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_DC2/efieldL0_110muVm_5ants_NJ/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_starshape/galacticnoise_starshape_Dunhuang2022_energyelec/aggressive_66uV_5antennas/'
+output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_DC2/ZHAireS-NJ/L0_110uV_5antennas_filtered_SWF_PTREND/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_starshape/nonoise_starshape_Dunhuang2022_energyelec/nonoise_110uV_5antennas_7/'
+#output_directory = '/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_simusgp300_Dunhuang2022/aggressive_110uV_5antennas/'
 def handler(signum, frame):
     raise TimeoutError("Le temps limite est dépassé.")
 signal.signal(signal.SIGALRM, handler)
@@ -59,12 +71,12 @@ class coincidence_set:
             return
         self.ant_set = antenna_set_instance
         print(" Reading coincidence(s): index, peak time, peak amplitude from file %s"%self.coinc_table_file)
-        tmp = np.loadtxt(self.coinc_table_file,dtype='float',usecols=(0,1))
-        tmp = tmp.astype(int)
+        tmp = np.loadtxt(self.coinc_table_file,dtype='int',usecols=(0,1))
         antenna_index_array = tmp[:,0]
         coinc_index_array   = tmp[:,1]
         tmp2 = np.loadtxt(self.coinc_table_file,usecols=(2,3)) # floats
         peak_time_array = tmp2[:,0]*c_light
+        peak_time_array_in_s = tmp2[:,0] #in s
         peak_amp_array  = tmp2[:,1]
         coinc_indices = np.unique(coinc_index_array)
         ncoincs = len(coinc_indices)
@@ -91,6 +103,7 @@ class coincidence_set:
         self.antenna_coords_array= np.zeros((self.ncoincs,self.nantsmax,3))
         self.coinc_index_array   = np.zeros((self.ncoincs,self.nantsmax),dtype='int')
         self.peak_time_array     = np.zeros((self.ncoincs,self.nantsmax))
+        self.peak_time_array_in_s  = np.zeros((self.ncoincs,self.nantsmax))
         self.peak_amp_array      = np.zeros((self.ncoincs,self.nantsmax))
 
         # Filter and read
@@ -108,6 +121,7 @@ class coincidence_set:
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc,:self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc,:self.nants[current_coinc]] = peak_time_array[mask]
+                self.peak_time_array_in_s[current_coinc,:self.nants[current_coinc]] = peak_time_array_in_s[mask]
                 #print(len(self.peak_time_array[current_coinc,:self.nants[current_coinc]]))
                 #self.peak_time_array[current_coinc,:self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc,:self.nants[current_coinc]])
                 self.peak_amp_array[current_coinc,:self.nants[current_coinc]] = peak_amp_array[mask]
@@ -135,15 +149,18 @@ class setup:
         # Prepare output files
         if (self.recons_type==0):
             self.outfile = self.data_dir+'/Rec_plane_wave_recons.txt'
+            self.outfile_convergence = self.data_dir+'/Rec_plane_convergence.txt'
         elif (self.recons_type==1):
             self.outfile = self.data_dir+'/Rec_sphere_wave_recons.txt'
+            self.outfile_convergence = self.data_dir+'/Rec_sphere_convergence.txt'
         elif (self.recons_type==2):
             self.outfile = self.data_dir+'/Rec_adf_recons.txt'
-            self.outfile_before_after_Xmax = self.data_dir+'/Rec_adf_recons_before_after_Xmax.txt'
+            self.outfile_convergence = self.data_dir+'/Rec_adf_convergence.txt'
+            self.outfile_before_after_Xmax = self.data_dir+'/Rec_adf_recons.txt'
             #self.outfile_res = self.data_dir+'/Rec_adf_amplitude_residuals_Cerenkov_asymmetry.txt'
             self.outfile_res = self.data_dir+'/Rec_adf_amplitude_residuals.txt'
             self.outfile_res_3D = self.data_dir+'/Rec_adf_amplitude_residuals_3D.txt'
-            self.outfile_res_3D_before_after_Xmax = self.data_dir+'/Rec_adf_amplitude_residuals_3D_before_after_Xmax.txt'
+            self.outfile_res_3D_before_after_Xmax = self.data_dir+'/Rec_adf_amplitude_residuals.txt'
             if os.path.exists(self.outfile_res):
                 os.remove(self.outfile_res)
             if os.path.exists(self.outfile_before_after_Xmax):
@@ -152,6 +169,8 @@ class setup:
                 os.remove(self.outfile_res_3D)
             if os.path.exists(self.outfile_res_3D_before_after_Xmax):
                 os.remove(self.outfile_res_3D_before_after_Xmax)
+            if os.path.exists(self.outfile_convergence):
+                os.remove(self.outfile_convergence)
 
 
         if os.path.exists(self.outfile):
@@ -166,23 +185,45 @@ class setup:
         if (self.recons_type==2):
             self.input_xmax_file = self.data_dir+'/Rec_sphere_wave_recons.txt'
 
+    def write_convergence_PWF(self,outfile_convergence,coinc,nants,time):
 
-    def write_angles(self,outfile,coinc,nants,angles,errors,chi2, time):
+        fid = open(outfile_convergence,'a')
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le\n"%(coinc, nants, np.nan, np.nan, np.nan, time))
+        fid.close()
+
+    def write_convergence(self,outfile_convergence,coinc,nants, max_iteration, f_eval, g_eval, time):
+
+        fid = open(outfile_convergence,'a')
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le\n"%(coinc, nants, max_iteration, f_eval, g_eval, time))
+        fid.close()
+
+    def write_convergence_false(self,outfile_convergence,coinc):
+        fid = open(outfile_convergence,'a')
+        fid.write("%ld %3.0f %12.0f %12.0f %12.0f %12.0f\n"%(coinc, -1 ,-1 , -1, -1, -1))
+        fid.close()
+
+    def write_angles(self,outfile,coinc,nants,angles,errors,chi2):
 
         fid = open(outfile,'a')
-        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.8le %12.5le %12.5le %12.5le \n"%(coinc,nants,angles[0],errors[0],angles[1],errors[1],chi2,np.nan, time))
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.8le %12.5le %12.5le\n"%(coinc, nants, 180-angles[0],errors[0],(180+angles[1])%360,errors[1],chi2, np.nan))
+        fid.close()
+
+    def write_angles_arsene(self,outfile,coinc,nants,zenith, azimuth):
+
+        fid = open(outfile,'a')
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.8le %12.5le %12.5le\n"%(coinc, nants, zenith,np.nan,azimuth,np.nan,np.nan, np.nan))
         fid.close()
 
     def write_xmax(self,outfile,coinc,nants,params,chi2,time):
         fid = open(outfile,'a')
         theta,phi,r_xmax,t_s = params
         st=np.sin(theta); ct=np.cos(theta); sp=np.sin(phi); cp=np.cos(phi); K = [st*cp,st*sp,ct]
-        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le \n"%(coinc,nants,chi2,np.nan,-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2],t_s, r_xmax, time))
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le \n"%(coinc,nants,chi2,np.nan,-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2],t_s, r_xmax))
         fid.close()
 
     def write_xmax_false(self,outfile,coinc):
         fid = open(outfile,'a')
-        fid.write("%ld %3.0f %12.0f %12.0f %12.0f %12.0f %12.0f %12.0f %12.0f \n"%(coinc, -1 ,-1 , -1, -1, -1, -1, -1, -1))
+        fid.write("%ld %3.0f %12.0f %12.0f %12.0f %12.0f %12.0f %12.0f\n"%(coinc, -1 ,-1 , -1, -1, -1, -1, -1))
         fid.close()
 
     def write_xmax_SWF_analitycal(self,outfile,coinc,nants,params,chi2,time):
@@ -193,19 +234,19 @@ class setup:
         fid.close()
 
 
-    def write_adf(self,outfile,coinc,nants,params,errors,chi2, time):
+    def write_adf(self,outfile,coinc,nants,params,errors,chi2):
         fid = open(outfile,'a')
         theta,phi,delta_omega,amplitude = params
         theta_err, phi_err, delta_omega_err, amplitude_err = errors
-        format_string = "%ld %3.0d "+"%12.5le "*9+"\n"
-        fid.write(format_string%(coinc,nants,np.rad2deg(theta),np.rad2deg(theta_err),
-            np.rad2deg(phi),np.rad2deg(phi_err),chi2, np.nan,delta_omega,amplitude, time))
+        format_string = "%ld %3.0d "+"%12.5le "*8+"\n"
+        fid.write(format_string%(coinc,nants,180-np.rad2deg(theta),np.rad2deg(theta_err),
+            (180+np.rad2deg(phi))%360,np.rad2deg(phi_err),chi2, np.nan,delta_omega,amplitude))
         fid.close()
 
     def write_adf_false(self, outfile, coinc):
         fid = open(outfile,'a')
-        format_string = "%ld %3.0f "+"%12.0f "*9+"\n"
-        fid.write(format_string%(coinc, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1))
+        format_string = "%ld %3.0f "+"%12.0f "*8+"\n"
+        fid.write(format_string%(coinc, -1, -1, -1, -1, -1, -1, -1, -1, -1))
         fid.close()
 
 
@@ -224,13 +265,13 @@ class setup:
             fid.write(f"{coinci}\t{n}\t{s}\t{r}\t{a}\t{e}\t{o}\t{o_cr}\t{c[0]}\t{c[1]}\t{c[2]}\t{n_0}\t{d_n}\t{alph}\t{alph_b}\n")
         fid.close()
 
-    def write_ADF_parameters_3D(self, outfile_res, coinc, nants, amplitude_simu, amplitude_recons, eta_recons, omega_recons, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif, coord, n0, delta_n, alpha, master_equation):
+    def write_ADF_parameters_3D(self, outfile_res, coinc, nants, amplitude_simu, amplitude_recons, eta_recons, omega_recons, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif, coord):
     #def write_amplitude_residuals(self, outfile_res, coinc, nants, residuals, amplitude_recons, eta_recons, omega_recons, coord):
         fid = open(outfile_res,'a')
         coinc = [coinc] * len(amplitude_simu)
         nants = [nants] * len(amplitude_simu)
-        for coinci, n, s, a, e, o, o_cr, o_cr_ana, o_cr_ana_eff, c, n_0, d_n, alph, master_eq in zip(coinc, nants, amplitude_simu, amplitude_recons, eta_recons, omega_recons, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif, coord, n0, delta_n, alpha, master_equation):
-            fid.write(f"{coinci}\t{n}\t{s}\t{a}\t{e}\t{o}\t{o_cr}\t{o_cr_ana}\t{o_cr_ana_eff}\t{c[0]}\t{c[1]}\t{c[2]}\t{n_0}\t{d_n}\t{alph}\t{master_eq}\n")
+        for coinci, n, s, a, e, o, o_cr, o_cr_ana, o_cr_ana_eff, c in zip(coinc, nants, amplitude_simu, amplitude_recons, eta_recons, omega_recons, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif, coord):
+            fid.write(f"{coinci}\t{n}\t{s}\t{a}\t{e}\t{o}\t{o_cr}\t{o_cr_ana}\t{o_cr_ana_eff}\t{c[0]}\t{c[1]}\t{c[2]}\n")
         fid.close()
 
 def main():
@@ -260,43 +301,36 @@ def main():
         # PWF model. We do not assume any prior analysis was done.
             for current_recons in range(co.ncoincs):
                 begining_time = time.time()
-                bounds = ((np.pi/2+1e-7,np.pi),(0,2*np.pi))
-                #bounds = ((1e-7,np.pi),(0,2*np.pi))
-                params_in = np.array(bounds).mean(axis=1)
-                # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],True)
                 args=(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
-                #args = (co.antenna_coords_array[current_recons,:], co.peak_time_array[current_recons,:])
-               
-                #test different minimization methods (gradient descent, MCMC, analytical):
-                #res = so.minimize(PWF_loss,params_in,args=args,method='BFGS')
-                #res = so.minimize(PWF_loss,params_in, jac=PWF_grad, args=args, method='L-BFGS-B', bounds=bounds)
-                #res = so.minimize(PWF_loss, params_in, args=args, bounds=bounds, method='Nelder-Mead')
-                #params_out = res.x
-                #print(res.success)
-                #res = MCMC_minimizer(logprob, args=args)
-                res = PWF_minimize_alternate_loss(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
-                #res = MCMC_minimizer(logprob_alternate, args=args)
-                #res = so.minimize(PWF_loss,res.x,args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:],1,True),method='L-BFGS-B')    
-                #res = PWF_methodC(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
-                params_out = res
-
+                #res = PWF_minimize_alternate_loss(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]])
+                theta_pwf_rad, phi_pwf_rad = pwf.PWF_minimize_alternate_loss(co.antenna_coords_array[current_recons,:co.nants[current_recons]], co.peak_time_array_in_s[current_recons,:co.nants[current_recons]], nr=1.000136)                        
+                theta_pwf = np.rad2deg(theta_pwf_rad)
+                phi_pwf = np.rad2deg(phi_pwf_rad)
+                #params_out = res
+                #chi2 = PWF_loss(params_out, *args)
+                #force descending solution (in old GRAND conventions)
+                #if params_out[0] <= np.pi/2:
+                #    params_out[0] = np.pi - params_out[0] 
+                print(co.nants[current_recons])
                 if (st.compute_errors):
                     args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-                    hess = nd.Hessian(PWF_loss) (params_out,*args)
                     errors = np.sqrt(np.diag(np.linalg.inv(hess)))
                 else:
-                    errors = np.array([np.nan]*2)
-                print ("Best fit parameters = ",np.rad2deg(params_out))
+                   errors = np.array([np.nan]*2)
+                #print ("Best fit parameters = ",np.rad2deg(params_out))
                 ## Errors computation needs work: errors are coming both from noise on amplitude and time measurements
-                if (st.compute_errors):
-                    print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
+                #if (st.compute_errors):
+                #    print ("Errors on parameters (from Hessian) = ",np.rad2deg(errors))
                 #print ("Chi2 at best fit = ",PWF_loss(params_out,*args))
+                #print ("Chi2 at best fit = ",PWF_alternate_loss(params_out,*args))
                 #print ("Chi2 at best fit \pm errors = ",PWF_loss(params_out+errors,*args),PWF_loss(params_out-errors,*args))
                 end_time = time.time()
                 plane_time = end_time - begining_time
                 # Write down results to file
-                st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
-                    np.rad2deg(params_out),np.rad2deg(errors),PWF_loss(params_out,*args), plane_time)
+                #st.write_angles(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],
+                #    np.rad2deg(params_out), np.rad2deg(errors), np.nan)
+                st.write_angles_arsene(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons], theta_pwf, phi_pwf)
+                st.write_convergence_PWF(st.outfile_convergence, co.coinc_index_array[current_recons,0], co.nants[current_recons], plane_time)
 
     if (st.recons_type==1):
         # SWF model. We assume that PWF reconstrution was run first. Check if corresponding result file exists.
@@ -314,9 +348,6 @@ def main():
             file_input.write('')
         with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'w') as file_recons:
             file_recons.write('')
-        #plane_parameters = np.loadtxt('/Users/mguelfan/Documents/GRAND/ADF_DC2/output_recons_ADF/Rec_plane_wave_recons.txt')
-        #theta_reconstructed = plane_parameters[:,2]
-        #print('theta_recons', theta_reconstructed)
         j=0
         timeout = 200
         for current_recons in range(co.ncoincs):
@@ -325,55 +356,57 @@ def main():
                 try:
                     # Read angles obtained with PWF reconstruction
                     l = fid_input_angles.readline().strip().split()
-                    Xcore = np.mean(co.antenna_coords_array[current_recons,:co.nants[current_recons]], axis = 0)
                     if l != 'nan':
-                        theta_in = float(l[2])
+                        theta_in = 180-float(l[2])
+                        phi_in   = (180+float(l[4]))%360
                     #if theta_in <= np.rad2deg(0) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
-                    if theta_in <= np.rad2deg(np.pi/2) or theta_in >= np.rad2deg(np.pi) or theta_in == -1:
+                    #on ne garde que les gerbes > 70°
+                    if theta_in ==-1:
+                    #if theta_in >= np.rad2deg(np.pi*180/180) or theta_in <= np.rad2deg(np.pi/2) or theta_in == -1:
                         params_out = [-1, -1, -1, -1]
                         with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
                             file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
                         with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
                             filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                        #st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_out, -1, -1)
                         st.write_xmax_false(st.outfile,co.coinc_index_array[current_recons,0])
+                        st.write_convergence_false(st.outfile_convergence,co.coinc_index_array[current_recons,0])
+
                     else:
-                        phi_in   = float(l[4])
-                        bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
-                                [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)], 
-                                [0, 10e5],
+                        bounds = [[np.deg2rad(theta_in-5),np.deg2rad(theta_in+5)],
+                                [np.deg2rad(phi_in-5),np.deg2rad(phi_in+5)], 
+                        #bounds =  [[np.deg2rad(0),np.deg2rad(180)],
+                        #        [np.deg2rad(0),np.deg2rad(360)], 
+                               [-10e6, 10e6],
+                               #[500, 1000],
                                #[-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
-                                [-10e5,0]]
-                                #[6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+                               [-10e6,10e6]]
+                              #[6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+                                #[-1000, -500]]
                                 
                         params_in = np.array(bounds).mean(axis=1)
-                        args=(co.antenna_coords_array[current_recons,:co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], Xcore, False)
-                        # args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
-
+                        args=(co.antenna_coords_array[current_recons,:co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]],False)
                         # Test value of gradient, compare to finite difference estimate
                         # print(nd.Gradient(SWF_loss,order=4)(params_in,*args))
                         # print(SWF_grad(params_in,*args))
                         method = 'L-BFGS-B'
+                        #method = 'migrad'
                         print('Minimize using %s'%method)
+                        #res = minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method)
+                        
                         res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'ftol':1e-13})
                         print('xxxxx')
                         res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
+                        
+                        #print('Minimize using the analytical Jacobian')
                         #res = so.minimize(SWF_loss,params_in,jac=SWF_grad,args=args,method='BFGS')
+                        #res = so.minimize(SWF_loss,res.x,jac=SWF_grad,args=args,method='BFGS')
+                        #res = so.minimize(SWF_loss,params_in,args=args, jac=SWF_grad, bounds=bounds,method='L-BFGS-B')
                         params_out = res.x
-
-                        #analytical SWF
-                        #res = TDOA_ant1(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr=1.0)
-                        #res = approx_B(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr=1.0)
-                        #res = approx_C(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr=1.0)
-                        #params_out = res
-                        #X0 = co.antenna_coords_array[current_recons,: co.nants[current_recons]][0]
-                        #print(X0)
-                        #n_average = ZHSEffectiveRefractionIndex(X0,np.array(res[0:3]))
-                        #print('params_out', params_out)
-                        #print(n_average)
-                        #res = TDOA_ant1(co.antenna_coords_array[current_recons,: co.nants[current_recons]],co.peak_time_array[current_recons,:co.nants[current_recons]], cr= 1/n_average)
-                        #params_out = res
-                        # Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
+                        #theta,phi,r_xmax,t_s = params_out
+                        #sint=np.sin(theta); ct=np.cos(theta); sp=np.sin(phi); cp=np.cos(phi); K = [sint*cp,sint*sp,ct]
+                        #Xmax = np.array([-r_xmax*K[0],-r_xmax*K[1],groundAltitude-r_xmax*K[2]])
+                        #print('xmax', Xmax)
+                        #Compute errors with numerical estimate of Hessian matrix, inversion and sqrt of diagonal terms
                         if (st.compute_errors):
                             args=(co.antenna_coords_array[current_recons,:],co.peak_time_array[current_recons,:])
                             hess = nd.Hessian(SWF_loss)(params_out,*args)
@@ -382,7 +415,7 @@ def main():
                             errors = np.array([np.nan]*2)      
 
                         print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-                        #print ("Chi2 at best fit = ",SWF_loss(params_out,*args,False))
+                        print ("Chi2 at best fit = ",SWF_loss(params_out,*args,False))
             
                         # Compute gradient with SWF_grad and compare to finite difference estimate
                         # print(nd.Gradient(SWF_loss)(params_out,*args))
@@ -403,21 +436,43 @@ def main():
                         end_time = time.time()
                         sphere_time = end_time - begining_time
                         #select output file either for descent gradient or SWF analytical
-                        st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out,SWF_loss(params_out,*args), sphere_time)
-                        #st.write_xmax_SWF_analitycal(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out, sphere_time, sphere_time)
+                        st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out, SWF_loss(params_out, *args), sphere_time)
+                        #L-BFGS-B
+                        #st.write_convergence(st.outfile_convergence,co.coinc_index_array[current_recons,0],co.nants[current_recons], res.nit, res.fun, np.nan, sphere_time)
+                        #migrad
+                        st.write_convergence(st.outfile_convergence,co.coinc_index_array[current_recons,0],co.nants[current_recons], np.nan, np.nan, np.nan, sphere_time)
                         i+=1
                         #print(i)
+                        #signal.alarm(0)
 
                 except TimeoutError as e:
-                    print("error !!!!!!!!!!", e) 
-                    params_out = [-1, -1, -1, -1]
+                    print("error", e) 
+                    with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
+                        file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
+                    #with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
+                    #    filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
+                    st.write_xmax_false(st.outfile,co.coinc_index_array[current_recons,0]) 
+                    st.write_convergence_false(st.outfile_convergence,co.coinc_index_array[current_recons,0])
+            
+                    continue
+
+                except ValueError as e:
+                    print("Une value error a été détectée", e) 
                     with open(f'{output_directory}Rec_plane_wave_reconsbis.txt', 'a') as file:
                         file.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 \n')
                     with open(f'{output_directory}input_simus_bis.txt', 'a') as filebis:
                         filebis.write(f'{co.coinc_index_array[current_recons,0]} -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 \n')
-                    #st.write_xmax(st.outfile,co.coinc_index_array[current_recons,0], -1, params_out, -1, -1)  
-                    st.write_xmax_false(st.outfile,co.coinc_index_array[current_recons,0])             
+                    st.write_xmax_false(st.outfile,co.coinc_index_array[current_recons,0])   
+                    st.write_convergence_false(st.outfile_convergence,co.coinc_index_array[current_recons,0])
+
+                    continue 
+
+                except MemoryError as e:
+                    # Ce bloc est exécuté si une MemoryError est levée
+                    print("Erreur de mémoire :", e)
                     continue
+                    
+
                 finally:
                     signal.alarm(0) 
 
@@ -435,115 +490,74 @@ def main():
         fid_input_angles = open(f'{output_directory}Rec_plane_wave_reconsbis.txt',"r")
         fid_input_xmax   = open(f'{output_directory}Rec_sphere_wave_recons.txt',"r")
         fid_input_xmaxsimu = open(f'{output_directory}input_simus_bis.txt',"r")
-        fid_input_cherenkov_simu = open(f'{output_directory}cerenkov_simus.txt',"r")
-
         #co.ncoins == len(fid_input_angles)
         for current_recons in range(co.ncoincs):
-        #for current_recons in range(len(length_data)):
             try:
                 begining_time = time.time()
-            #for current_recons in range(len(fid_input_angles)):
-                # Read angles obtained with PWF reconstruction
-                #l = fid_input_angles.readline().strip().split()
-                #theta_in = float(l[2])
-                #phi_in   = float(l[4])
-                #Read angles from simus
-                l_simu = fid_input_xmaxsimu.readline().strip().split()
-                theta_in = float(l_simu[1])
-                phi_in = float(l_simu[2])
-                theta_true = 180 - theta_in
-                phi_true =(180 + phi_in) % 360
-                #l = fid_input_xmax.readline().strip().split()
-                #l_simu = fid_input_xmaxsimu.readline().strip().split()
+                Xcore = np.mean(co.antenna_coords_array[current_recons,:co.nants[current_recons]], axis = 0)
+                #Read angles from PWF simulation
+                l = fid_input_angles.readline().strip().split()
+                theta_in = 180-float(l[2])
+                phi_in   = (180+float(l[4]))%360
+                l = fid_input_xmax.readline().strip().split()
                 #here, reconstructed Xmax
-                #Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
-                #to have fixed Xmax from the simulations
-                Xmax = np.array([float(l_simu[7]),float(l_simu[8]),float(l_simu[9])])
+                Xmax = np.array([float(l[4]),float(l[5]),float(l[6])])
                 #print(Xmax[0])
-                cerenkovsimu = fid_input_cherenkov_simu.readline().strip().split()
-
-                #bounds = [[np.deg2rad(theta_in-1),np.deg2rad(theta_in+1)],
-                #            [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
-                #            [0.1,3.0],
-                #            [1e6,1e10]]
-                bounds = [[np.deg2rad(theta_true),np.deg2rad(theta_true)],
-                            [np.deg2rad(phi_true),np.deg2rad(phi_true)],
-                            [0.1,3.0],
-                            [1e6,1e10]]
+                if theta_in < 105:  #mean theta_in > 75° in CR conventions
+                    bound_width = [0.1, 3.0]
+                else: 
+                    bound_width = [0.1, 3.0]
+                bounds = [[np.deg2rad(theta_in-2),np.deg2rad(theta_in+2)],
+                            [np.deg2rad(phi_in-1),np.deg2rad(phi_in+1)],
+                            #[0.3,15.0],
+                            #[0.1,3.0],
+                            bound_width,
+                            [1e5,1e10]]
+                            #[1e6,1e10]]
                 params_in = np.array(bounds).mean(axis=1)
-                #print(params_in)
-                #print(params_in[2])
                 if theta_in  == -1.0 or Xmax[0] == -1.0:
-                #if theta_in == -1:
-                    print('!!!!!', theta_in)
-                    st.write_adf_false(st.outfile, co.coinc_index_array[current_recons,0])
                     st.write_adf_false(st.outfile_before_after_Xmax, co.coinc_index_array[current_recons,0])
-                    #st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                    st.write_convergence_false(st.outfile_convergence,co.coinc_index_array[current_recons,0])
+
+                    #st.write_ADF_parameters_3D(st.outfile_res_3D_before_after_Xmax, co.coinc_index_array[current_recons, 0], -1, -1, -1, -1, -1, -1, -1, -1, -1)
+
                 else:
-                    lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_true))
-                    #lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
-                    #print(lant)
+                    lant = (groundAltitude-Xmax[2])/np.cos(np.deg2rad(theta_in))
+                    #print('lant', lant)
                     params_in[3] = co.peak_amp_array[current_recons,:co.nants[current_recons]].max() * lant
                     #print ('amp_guess = ',params_in[3])
                     ###################
                     args = (co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax, 0.01, False)
                     
-                    res = so.minimize(ADF_loss, params_in,args=(co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax),
-                                       method='L-BFGS-B', bounds=bounds)
-                    #res = so.minimize(ADF_loss,params_in,args=args, method='BFGS')
-                    #print (res)
-                    params_out = res.x
-
-                    #compute the difference between the simulated amplitude at one antenna and the reconstructed one 
+                    #res_3D_before_after_Xmax = so.minimize(ADF_3D_loss_before_after_Xmax, params_in,args=(co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax),
+                    #                   method='L-BFGS-B', bounds=bounds)
+                    #res_3D_before_after_Xmax = so.minimize(ADF_3D_loss_before_after_Xmax,params_in,args=args, jac=ADF_grad, bounds=bounds,method='L-BFGS-B')
+                    res_3D_before_after_Xmax = minimize(ADF_3D_loss_before_after_Xmax, params_in, args=args, method='migrad', bounds=bounds)
                     
-                    #amplitude_diff = ADF_residuals(params_out, co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    #amplitude_recons = ADF_simulation(params_out,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    #eta, omega, omega_cr, n0, delta_n, alpha, alpha_bis = ADF_omega_eta(params_out,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    #st.write_amplitude_residuals(st.outfile_res, co.coinc_index_array[current_recons, 0], co.nants[current_recons], co.peak_amp_array[current_recons,:co.nants[current_recons]], amplitude_diff, amplitude_recons, eta*180/np.pi, omega*180/np.pi, omega_cr*180/np.pi, co.antenna_coords_array[current_recons,:co.nants[current_recons]], n0, delta_n, alpha*180/np.pi, alpha_bis*180/np.pi)
-                    
-                    res_3D = so.minimize(ADF_3D_loss, params_in,args=(co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax),
-                                       method='L-BFGS-B', bounds=bounds)
-                    params_out_3D = res_3D.x
-                    eta, omega, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif, n0, n1, alpha, master_equation = ADF_3D_parameters(params_out_3D,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    amplitude_recons = ADF_3D_model(params_out_3D, co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    st.write_ADF_parameters_3D(st.outfile_res_3D, co.coinc_index_array[current_recons, 0], co.nants[current_recons], co.peak_amp_array[current_recons,:co.nants[current_recons]], amplitude_recons, eta*180/np.pi, omega*180/np.pi, omega_cr*180/np.pi, omega_cr_analytic*180/np.pi, omega_cr_analytic_effectif*180/np.pi, co.antenna_coords_array[current_recons,:co.nants[current_recons]], n0, n1, alpha*180/np.pi, master_equation)
-
-                    res_3D_before_after_Xmax = so.minimize(ADF_3D_loss_before_after_Xmax, params_in,args=(co.peak_amp_array[current_recons,:co.nants[current_recons]],co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax),
-                                       method='L-BFGS-B', bounds=bounds)
                     params_out_3D_before_after_Xmax = res_3D_before_after_Xmax.x
-                    eta, omega, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif, n0, n1, alpha, master_equation = ADF_3D_parameters_before_after_Xmax(params_out_3D_before_after_Xmax,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
+                    eta, omega, omega_cr, omega_cr_analytic, omega_cr_analytic_effectif = ADF_3D_parameters_before_after_Xmax(params_out_3D_before_after_Xmax,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]],Xmax, asym_coeff=0.01)
                     amplitude_recons = ADF_3D_model_before_after_Xmax(params_out_3D_before_after_Xmax, co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    st.write_ADF_parameters_3D(st.outfile_res_3D_before_after_Xmax, co.coinc_index_array[current_recons, 0], co.nants[current_recons], co.peak_amp_array[current_recons,:co.nants[current_recons]], amplitude_recons, eta*180/np.pi, omega*180/np.pi, omega_cr*180/np.pi, omega_cr_analytic*180/np.pi, omega_cr_analytic_effectif*180/np.pi, co.antenna_coords_array[current_recons,:co.nants[current_recons]], n0, n1, alpha*180/np.pi, master_equation)
-
-                    #print(n0, n1)
-                    #find true values of eta, omega (coming from the theta and phi of the simulations)
-                    #l_true = fid_input_xmaxsimu.readline().strip().split()
-                    #theta_true = float(l_true[1])
-                    #phi_true   = float(l_true[2])
-                    #theta_true_grand_coordinates = np.deg2rad(180 - theta_true) 
-                    #phi_true_grand_coordinates =np.deg2rad((180 + phi_true) % 360)
-                    #params_true = theta_true_grand_coordinates, phi_true_grand_coordinates, params_out[2], params_out[3]
-                    #print(theta_true_grand_coordinates, phi_true_grand_coordinates)
-                    #eta_true, omega_true, omega_cr_true = ADF_omega_eta(params_true,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01)
-                    #print(eta_true, omega_true)
-                    #st.write_amplitude_residuals(st.outfile_res, co.coinc_index_array[current_recons, 0], co.nants[current_recons], co.peak_amp_array[current_recons,:co.nants[current_recons]], amplitude_diff, amplitude_recons, eta*180/np.pi, omega*180/np.pi, omega_cr*180/np.pi, eta_true*180/np.pi, omega_true*180/np.pi, omega_cr_true*180/np.pi, co.antenna_coords_array[current_recons,:co.nants[current_recons]])
+                    st.write_ADF_parameters_3D(st.outfile_res_3D_before_after_Xmax, co.coinc_index_array[current_recons, 0], co.nants[current_recons], co.peak_amp_array[current_recons,:co.nants[current_recons]], amplitude_recons, eta*180/np.pi, omega*180/np.pi, omega_cr*180/np.pi, omega_cr_analytic*180/np.pi, omega_cr_analytic_effectif*180/np.pi, co.antenna_coords_array[current_recons,:co.nants[current_recons]])
 
                     # Compute errors with numerical estimates of Hessian matrix, inversion and sqrt of diagonal terms
                     # hess = nd.Hessian(ADF_loss)(params_out,*args)
                     # errors = np.sqrt(np.diag(np.linalg.inv(hess)))
                     errors = np.array([np.nan]*4)
-                    print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-                    print ("Chi2 at best fit = ",ADF_loss(params_out,*args))
-                    print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
+                    print ("Best fit parameters = ",*np.rad2deg(params_out_3D_before_after_Xmax[:2]),*params_out_3D_before_after_Xmax[2:])
+                    print ("Chi2 at best fit = ",ADF_loss(params_out_3D_before_after_Xmax,*args))
+                    #print ("Errors on parameters (from Hessian) = ",*np.rad2deg(errors[:2]),*errors[2:])
                     end_time = time.time()
                     adf_time = end_time - begining_time
-                    st.write_adf(st.outfile,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out_3D,errors, ADF_3D_loss(params_out,*args), adf_time)
-                    st.write_adf(st.outfile_before_after_Xmax,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out_3D_before_after_Xmax,errors, ADF_3D_loss_before_after_Xmax(params_out,*args), adf_time)
+                    st.write_adf(st.outfile_before_after_Xmax,co.coinc_index_array[current_recons,0],co.nants[current_recons],params_out_3D_before_after_Xmax,errors, ADF_3D_loss_before_after_Xmax(params_out_3D_before_after_Xmax,co.peak_amp_array[current_recons,:co.nants[current_recons]], co.antenna_coords_array[current_recons,:co.nants[current_recons]], Xmax, asym_coeff=0.01))
+                    #migrad
+                    st.write_convergence(st.outfile_convergence,co.coinc_index_array[current_recons,0],co.nants[current_recons], np.nan, np.nan, np.nan, adf_time)
+                    #L-BFGS-B
+                    #st.write_convergence(st.outfile_convergence,co.coinc_index_array[current_recons,0],co.nants[current_recons], res_3D_before_after_Xmax.nit, res_3D_before_after_Xmax.fun, np.nan, adf_time)
+                    #st.write_ADF_parameters_3D(st.outfile_res_3D_before_after_Xmax, co.coinc_index_array[current_recons, 0], -1, -1, -1, -1, -1, -1, -1, -1, -1)
 
             except ZeroDivisionError as erreur:
-                st.write_adf_false(st.outfile, co.coinc_index_array[current_recons,0])
                 st.write_adf_false(st.outfile_before_after_Xmax, co.coinc_index_array[current_recons,0])
-                #st.write_adf(st.outfile, co.coinc_index_array[current_recons,0], -1, [-1, -1, -1, -1], [-1, -1, -1, -1], -1, -1)
+                st.write_convergence_false(st.outfile_convergence,co.coinc_index_array[current_recons,0])
                 print("Une division par zéro a été détectée :", erreur)
 
         return
