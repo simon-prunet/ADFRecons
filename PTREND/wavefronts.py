@@ -12,7 +12,7 @@ c_light = 2.997924580e8
 R_earth = 6371007.0
 ns = 325
 kr = -0.1218
-groundAltitude = 1207.0 # 1086.0
+groundAltitude = 1264.0 # 1086.0
 B_dec = 0.
 B_inc = np.pi/2. + 1.0609856522873529
 # Magnetic field direction (unit) vector
@@ -507,7 +507,7 @@ def SWF_model(params, Xants, verbose=False, cr=1.0):
     Xmax = -r_xmax * K + np.array([0., 0., groundAltitude])
     tants = np.zeros(nants)
     for i in range(nants):
-        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i, :])
+        n_average = 1.0 # ZHSEffectiveRefractionIndex(Xmax, Xants[i, :])
         dX = Xants[i, :] - Xmax
         tants[i] = t_s + n_average / cr * np.linalg.norm(dX)
 

@@ -226,7 +226,7 @@ def main():
             #          [np.deg2rad(phi_in-15),np.deg2rad(phi_in+15)], 
             #          [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
             #          [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
-            bounds = [[np.deg2rad(88.),np.deg2rad(90.)],
+            bounds = [[np.deg2rad(88.),np.deg2rad(91.)],
                       [np.deg2rad(30.),np.deg2rad(50.)], 
                       [0.,20000.],
                       [-20000.,0.]]
