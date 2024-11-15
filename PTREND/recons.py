@@ -5,6 +5,7 @@ import os
 import scipy.optimize as so
 import numdifftools as nd
 from iminuit import minimize
+#from scipy.optimize import minimize
 c_light = 2.997924580e8
 
 
@@ -87,7 +88,7 @@ class coincidence_set:
                 # Now read coincidence index (constant within the same coincidence event !), peak time and peak amplitudes per involved antennas.
                 self.coinc_index_array[current_coinc, :self.nants[current_coinc]] = coinc_index_array[mask]
                 self.peak_time_array[current_coinc, :self.nants[current_coinc]] = peak_time_array[mask]
-                # self.peak_time_array[current_coinc, :self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc, :self.nants[current_coinc]])
+                self.peak_time_array[current_coinc, :self.nants[current_coinc]] -= np.min(self.peak_time_array[current_coinc, :self.nants[current_coinc]])
                 self.peak_amp_array[current_coinc, :self.nants[current_coinc]] = peak_amp_array[mask]
                 current_coinc += 1
         return
@@ -221,14 +222,14 @@ def main():
             theta_in = float(l[2])
 
             phi_in   = float(l[4])
-            bounds = [[np.deg2rad(theta_in-5),np.deg2rad(theta_in+5)],
-                      [np.deg2rad(phi_in-15),np.deg2rad(phi_in+15)], 
-                      [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
-                      [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
             #bounds = [[np.deg2rad(theta_in-5),np.deg2rad(theta_in+5)],
-            #          [np.deg2rad(phi_in-30),np.deg2rad(phi_in+30)], 
-            #          [0.,2000.],
-            #          [-2000.,0.]]
+            #          [np.deg2rad(phi_in-15),np.deg2rad(phi_in+15)], 
+            #          [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
+            #          [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
+            bounds = [[np.deg2rad(88.),np.deg2rad(90.)],
+                      [np.deg2rad(30.),np.deg2rad(50.)], 
+                      [0.,20000.],
+                      [-20000.,0.]]
 
             params_in = np.array(bounds).mean(axis=1)
             print("params_in = ", params_in)
@@ -240,8 +241,11 @@ def main():
 
             # Use MINUIT 
             method = 'migrad'
+            # method = 'L-BFGS-B'
             ## print('Minimize using %s'%method)
-            res = minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method)
+            res = minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'stra':2})
+
+            res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
 
             params_out = res.x
             # TRY IMINUIT
