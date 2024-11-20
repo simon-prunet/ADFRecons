@@ -491,7 +491,7 @@ def PWF_loss_nonp(params, Xants, tants, verbose=False, cr=1.0):
 
 ### SWF related functions
 
-#@njit(**kwd)
+@njit(**kwd)
 def SWF_model(params, Xants, verbose=False, cr=1.0):
     '''
     Computes predicted wavefront timings for the spherical case.
@@ -518,7 +518,7 @@ def SWF_model_iminuit(XantsT,params):
 
 
 
-#@njit(**kwd, parallel=False)
+@njit(**kwd, parallel=False)
 def SWF_loss(params_array, Xants, tants, verbose=False, log = False, cr=1.0):
 
     '''
@@ -555,12 +555,12 @@ def SWF_loss(params_array, Xants, tants, verbose=False, log = False, cr=1.0):
 
     chi2 = (res**2).sum()
 
-    if (verbose):
-        print("theta, phi, r_xmax, t_s = ", *params)
-        print ("Chi2 = ", chi2)
+    #if (verbose):
+    #    print("theta, phi, r_xmax, t_s = ", *params)
+    #    print ("Chi2 = ", chi2)
     return (chi2)
 
-#@njit(**kwd, parallel=False)
+@njit(**kwd, parallel=False)
 def SWF_residuals(params, Xants, tants, verbose=False, cr=1.0):
 
     '''
@@ -611,7 +611,7 @@ def log_SWF_loss(params, Xants, tants, verbose=False, cr=1.0):
     return np.log10(SWF_loss(params, Xants, tants, verbose=verbose, cr=cr))
 
 
-#@njit(**kwd)
+@njit(**kwd)
 def SWF_grad(params, Xants, tants, verbose=False, cr=1.0):
     '''
     Gradient of SWF_loss, w.r.t. theta, phi, r_xmax and t_s
@@ -634,8 +634,8 @@ def SWF_grad(params, Xants, tants, verbose=False, cr=1.0):
     
     jac = np.zeros(4)
     for i in range(nants):
-        n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i, :])
-        ## n_average = 1.0 ## DEBUG
+        ## n_average = ZHSEffectiveRefractionIndex(Xmax, Xants[i, :])
+        n_average = 1.0 ## DEBUG
         dX = Xants[i, :] - Xmax
         ndX = np.linalg.norm(dX)
         res = cr*(tants[i]-t_s) - n_average*ndX

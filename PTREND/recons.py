@@ -141,7 +141,8 @@ class setup:
         fid = open(outfile, 'a')
         theta, phi, r_xmax, t_s = params
         st=np.sin(theta); ct=np.cos(theta); sp=np.sin(phi); cp=np.cos(phi); K = [st*cp, st*sp, ct]
-        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le\n"%(coinc, nants, chi2, np.nan, -r_xmax*K[0], -r_xmax*K[1], groundAltitude-r_xmax*K[2], t_s))
+        fid.write("%ld %3.0d %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le %12.5le\n"%(coinc, nants, chi2, 
+            np.nan, -r_xmax*K[0], -r_xmax*K[1], groundAltitude-r_xmax*K[2], t_s, np.rad2deg(theta), np.rad2deg(phi)))
         fid.close()
 
     def write_adf(self, outfile, coinc, nants, params, errors, chi2):
@@ -226,14 +227,9 @@ def main():
             #          [np.deg2rad(phi_in-15),np.deg2rad(phi_in+15)], 
             #          [-15.6e3 - 12.3e3/np.cos(np.deg2rad(theta_in)),-6.1e3 - 15.4e3/np.cos(np.deg2rad(theta_in))],
             #          [6.1e3 + 15.4e3/np.cos(np.deg2rad(theta_in)),0]]
-            bounds = [[np.deg2rad(88.),np.deg2rad(91.)],
-                      [np.deg2rad(30.),np.deg2rad(50.)], 
-                      [0.,20000.],
-                      [-20000.,0.]]
 
-            params_in = np.array(bounds).mean(axis=1)
-            print("params_in = ", params_in)
-            print("bounds = ", bounds)
+            # print("params_in = ", params_in)
+            # print("bounds = ", bounds)
 
             args=(co.antenna_coords_array[current_recons, :co.nants[current_recons], :], co.peak_time_array[current_recons, :co.nants[current_recons]], False)
             # args=(co.antenna_coords_array[current_recons, :], co.peak_time_array[current_recons, :])
@@ -243,11 +239,42 @@ def main():
             method = 'migrad'
             # method = 'L-BFGS-B'
             ## print('Minimize using %s'%method)
-            res = minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'stra':2})
+            # res = minimize(SWF_loss,params_in,args=args,bounds=bounds,method=method,options={'stra':2})
 
-            res = so.minimize(SWF_loss,res.x,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':400})
+            ### First look at solutions with theta < 90.
+            bounds = [[np.deg2rad(30.),np.deg2rad(90.)],
+                      [np.deg2rad(0.),np.deg2rad(360.)], 
+                      [0.,20000.],
+                      [-20000.,0.]]
+            params_in = np.array(bounds).mean(axis=1)
 
+            res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':500})
+
+            res = minimize(SWF_loss,res.x,args=args,jac=SWF_grad,bounds=bounds,method=method,options={'stra':1})
+            #res = so.minimize(SWF_loss,res.x,args=args,jac=SWF_grad,bounds=bounds,method='L-BFGS-B',options={'ftol':1e-12,'gtol':1e-12})
             params_out = res.x
+            chi2 = res.fun
+
+            ### Now look at solutions with theta > 90.
+            bounds = [[np.deg2rad(90.),np.deg2rad(100.)],
+                      [np.deg2rad(0.),np.deg2rad(360.)], 
+                      [0.,20000.],
+                      [-20000.,0.]]
+            params_in = np.array(bounds).mean(axis=1)
+
+            res = so.minimize(SWF_loss,params_in,args=args,bounds=bounds,method='Nelder-Mead',options={'maxiter':500})
+
+            res = minimize(SWF_loss,res.x,args=args,jac=SWF_grad,bounds=bounds,method=method,options={'stra':1})
+            #res = so.minimize(SWF_loss,res.x,args=args,jac=SWF_grad,bounds=bounds,method='L-BFGS-B',options={'ftol':1e-12,'gtol':1e-12})
+            if (res.fun < chi2): # Better solution, keep it
+                params_out = res.x
+
+            #res = so.minimize(SWF_loss,res.x,args=args,jac=SWF_grad,bounds=bounds,method='BFGS', 
+            #    options={'gtol':1e-10,'disp':True})
+
+            # res = so.dual_annealing(SWF_loss,bounds,x0=res.x,args=args)
+            # r,f,d = so.fmin_l_bfgs_b(SWF_loss,res.x,fprime=SWF_grad,args=args,bounds=bounds,factr=10,pgtol=1e-10,maxls=100,m=20,iprint=0)
+
             # TRY IMINUIT
             # sigma_t = 5e-9 # s
             # sigma = c_light * sigma_t
@@ -265,8 +292,8 @@ def main():
             #     errors = np.array([np.nan]*4)      
             errors = np.array([np.nan]*4)
             
-            print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
-            print ("Chi2 at best fit = ",SWF_loss(params_out,*args))
+            # print ("Best fit parameters = ",*np.rad2deg(params_out[:2]),*params_out[2:])
+            print ("%d Chi2 at best fit = "%current_recons, SWF_loss(params_out,*args))
 
             # Write down results to file 
             st.write_xmax(st.outfile, co.coinc_index_array[current_recons, 0], co.nants[current_recons], params_out, SWF_loss(params_out, *args))
