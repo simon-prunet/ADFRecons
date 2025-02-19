@@ -10,17 +10,17 @@ import matplotlib.pyplot as plt
 import utils as utils
 
 sigma_timing = 5e-9 # in sec
-threshold = 75  # uV/m
+threshold = 30  # uV/m
 
 
 
 #  The lines below load an events from the DC2 library
-arr = np.load('./PWF_SWF_data/9596.npy')
-with open('./PWF_SWF_data/9596.json', 'r') as f:
+arr = np.load('./PWF_SWF_data/23796.npy')
+with open('./PWF_SWF_data/23796.json', 'r') as f:
     event_params = json.load(f)
 
-ev_du_pos = arr[:, 1:4]
-tmax_3d = arr[:, 4:7] * 1e-9 + np.random.randn(*(arr[:, 4:7].shape)) * sigma_timing
+ev_du_pos = arr[:, 1:4] + np.random.randn(*(arr[:, 1:4].shape)) * 1.5
+tmax_3d = arr[:, 4:7] * 1e-9 + np.random.randn(*(arr[:, 4:7].shape)) * sigma_timing*0
 Emax_3d = arr[:, 7:10]
 
 ev_du_ids = arr[:, 0]
@@ -84,9 +84,12 @@ zeff = xmaxz
 initial_guess = np.array([xeff, yeff, zeff, t_ants.min()])
 initial_guess2 = np.array([xeff, yeff, zeff])
 
-
+print(phi_pwf_rad * swf.phys_params.R2D)
 swf_fit = swf.get_SWF_fit(x_ants, t_ants, initial_guess, sigma_t=sigma_timing, ncall=200)
-swf_fit2 = swf.get_SWF_fit_v2(x_ants, t_ants, initial_guess2, sigma_t=sigma_timing, ncall=200)
+swf_fit2, valid = swf.get_SWF_fit_v2(x_ants, t_ants, initial_guess2, sigma_t=sigma_timing, ncall=2000)
+swf_fit3, chi2, ndof, valid3 = swf.get_SWF_fit_v3(x_ants, t_ants, initial_guess2, sigma_t=sigma_timing, ncall=2000)
+
+res = swf.get_SWF_fit_v4(x_ants, t_ants, initial_guess2, sigma_t=sigma_timing, ncall=2000)
 
 
 
@@ -103,3 +106,4 @@ tt2, pp2 = utils.k_to_theta_phi(K_recons_swf2)
 
 print('theta_gt = {}, theta_pwf = {}, theta_swf = {},  theta_swf2 = {}'.format(theta_gt, theta_pwf_rad*180/np.pi, tt * 180/np.pi, tt2 * 180/np.pi ))
 print('phi_gt = {}, phi_pwf = {}, phi_swf = {}, phi_swf2 = {}'.format(phi_gt, phi_pwf_rad*180/np.pi, pp * 180/np.pi, pp2 * 180/np.pi))
+print(swf_fit2, valid)

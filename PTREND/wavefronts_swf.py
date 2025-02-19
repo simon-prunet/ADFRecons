@@ -3,7 +3,7 @@ from numba import njit, float64, prange
 import utils as utils
 from iminuit import cost, Minuit
 import physical_parameters as phys_params
-
+from scipy.optimize import differential_evolution
 kwd = {"fastmath": {"reassoc", "contract", "arcp"}}
 
 
@@ -30,7 +30,6 @@ def ZHSEffectiveRefractionIndex(X0, Xa):
     rh0 = phys_params.ns*np.exp(phys_params.kr*h0)
 
     modr = np.sqrt(R02)
-    # print(modr)
 
     if (modr > 1e3):
 
@@ -38,6 +37,7 @@ def ZHSEffectiveRefractionIndex(X0, Xa):
         U = Xa-X0
         # Divide into pieces shorter than 10km
         nint = np.int32(modr/2e4)+1
+
         K = U/nint
 
         # Current point coordinates and altitude
@@ -90,14 +90,69 @@ def SWF_model_xyz(Xants, x_eff, y_eff, z_eff, t_s):
 def SWF_model_xyz_v2(Xants, x_eff, y_eff, z_eff):
 
     x, y, z = Xants
-    nants = Xants.shape[1]
-    delta_tants = np.zeros(nants)
+    nants = len(x)
+#     nants = Xants.shape[1]
+    delta_ctants = np.zeros(nants)
     n_average_0 = ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[0, :])
     for i in range(nants):
         n_average = ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[i, :])
-        delta_tants[i] = 1.0/phys_params.c_light * ( n_average * np.sqrt((x[i]-x_eff)**2 + (y[i]-y_eff)**2 + (z[i]-z_eff)**2) - n_average_0*np.sqrt((x[0]-x_eff)**2 + (y[0]-y_eff)**2 + (z[0]-z_eff)**2)) 
+        delta_ctants[i] = (n_average * np.sqrt((x[i]-x_eff)**2 + (y[i]-y_eff)**2 + (z[i]-z_eff)**2) - n_average_0*np.sqrt((x[0]-x_eff)**2 + (y[0]-y_eff)**2 + (z[0]-z_eff)**2))
 
-    return delta_tants
+    return delta_ctants
+
+
+def SWF_model_xyz_v2_nr1(Xants, x_eff, y_eff, z_eff):
+
+    x, y, z = Xants
+    nants = len(x)
+#     nants = Xants.shape[1]
+    delta_ctants = np.zeros(nants)
+    n_average_0 = 1 #ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[0, :])
+    for i in range(nants):
+        n_average = 1 # ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[i, :])
+        delta_ctants[i] = (n_average * np.sqrt((x[i]-x_eff)**2 + (y[i]-y_eff)**2 + (z[i]-z_eff)**2) - n_average_0*np.sqrt((x[0]-x_eff)**2 + (y[0]-y_eff)**2 + (z[0]-z_eff)**2))
+
+    return delta_ctants
+
+
+def SWF_model_xyz_scipy(X, Xants):
+    x_eff, y_eff, z_eff = X
+    x, y, z = Xants
+    nants = Xants.shape[1]
+    delta_ctants = np.zeros(nants)
+    
+    n_average_0 = ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[0, :])
+    for i in range(nants):
+        
+        n_average = ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[i, :])
+        
+        delta_ctants[i] = ( n_average * np.sqrt((x[i]-x_eff)**2 + (y[i]-y_eff)**2 + (z[i]-z_eff)**2) - n_average_0*np.sqrt((x[0]-x_eff)**2 + (y[0]-y_eff)**2 + (z[0]-z_eff)**2))
+
+    return delta_ctants
+
+
+
+
+
+
+
+
+# def SWF_model_xyz_v3(Xants, x_eff, y_eff, z_eff):
+
+#     x, y, z = Xants
+#     nants = Xants.shape[1]
+#     delta_ctants = []
+#     n_av_tab = np.zeros(nants)
+#     #n_average_0 = ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[0, :])
+#     for i in range(nants):
+#         n_av_tab[i] = ZHSEffectiveRefractionIndex([x_eff, y_eff, z_eff], Xants.T[i, :])
+
+#     for i in range(nants):
+#         for j in range(i+1, nants):
+#             delta_ctants.append(n_av_tab[i] * np.sqrt((x[i]-x_eff)**2 + (y[i]-y_eff)**2 + (z[i]-z_eff)**2) - n_av_tab[j]*np.sqrt((x[j]-x_eff)**2 + (y[j]-y_eff)**2 + (z[j]-z_eff)**2))
+
+#     delta_ctants = np.array(delta_ctants)
+#     return delta_ctants
 
 
 def SWF_simulation_xyz(Xants, x_eff, y_eff, z_eff, t_s, sigma_t=5e-9):
@@ -127,14 +182,118 @@ def get_SWF_fit_v2(x_ants, t_ants, initial_guess, sigma_t=5e-9, ncall=100):
     y = x_ants[:, 1]
     z = x_ants[:, 2]
 
-    delta_tants = t_ants - t_ants[0]
+    delta_ctants = phys_params.c_light*( t_ants - t_ants[0])
 
-    leastsquares = cost.LeastSquares((x, y, z), delta_tants, t_ants*0 + sigma_t * np.sqrt(2), SWF_model_xyz_v2)
+    leastsquares = cost.LeastSquares((x, y, z), delta_ctants, t_ants*0 + phys_params.c_light*sigma_t * np.sqrt(2), SWF_model_xyz_v2, verbose=0)
     leastsquares._ndim = 3
     x0 = initial_guess[0]
     y0 = initial_guess[1]
     z0 = initial_guess[2]
 
     m = Minuit(leastsquares, x_eff=x0, y_eff=y0, z_eff=z0)
+    m.limits = [(-500000, 500000), (-500000, 500000), (0, 30000)]
     m.migrad(ncall=ncall)
-    return np.array(m.values)
+    return np.array(m.values), m.valid
+
+
+def get_SWF_fit_v3(x_ants, t_ants, initial_guess, sigma_t=5e-9, ncall=100, varying_nr=False):
+
+    if varying_nr:
+        model = SWF_model_xyz_v2
+    else:
+        model = SWF_model_xyz_v2_nr1
+    nants = len(t_ants)
+    delta_ctants = phys_params.c_light*(t_ants - t_ants[0])
+    cov = (sigma_t * phys_params.c_light)**2 * (np.ones((nants-1, nants-1)) + np.diag(np.ones(nants-1)))
+    inv_cov = np.linalg.inv(cov)
+
+    def cost(x_eff, y_eff, z_eff):
+        pred = model(x_ants.T, x_eff, y_eff, z_eff)
+        delta = delta_ctants - pred
+        delta = delta[1:]
+        return np.einsum("i,j,ij", delta, delta, inv_cov)
+
+    cost.errordef = Minuit.LEAST_SQUARES
+    cost.ndata = nants - 1
+
+    #leastsquares = cost.LeastSquares((x, y, z), delta_ctants, t_ants*0 + phys_params.c_light*sigma_t * np.sqrt(2), SWF_model_xyz_v2, verbose=0)
+    #leastsquares._ndim = 3
+    x0 = initial_guess[0]
+    y0 = initial_guess[1]
+    z0 = initial_guess[2]
+
+    m = Minuit(cost, x_eff=x0, y_eff=y0, z_eff=z0)
+    m.limits = [(-500000, 500000), (-500000, 500000), (0, 30000)]
+    m.migrad(ncall=ncall)
+    return np.array(m.values), m.fcn(m.values), m.ndof, m.valid
+
+
+
+def get_SWF_fit_v4(x_ants, t_ants, initial_guess, sigma_t=5e-9, ncall=100, varying_nr=False):
+
+    if varying_nr:
+        model = SWF_model_xyz_v2
+    else:
+        model = SWF_model_xyz_v2_nr1
+    nants = len(t_ants)
+    delta_ctants = phys_params.c_light*(t_ants - t_ants[0])
+    cov = (sigma_t * phys_params.c_light)**2 * (np.ones((nants-1, nants-1)) + np.diag(np.ones(nants-1)))
+    inv_cov = np.linalg.inv(cov)
+    bounds = [(-500000, 500000), (-500000, 500000), (-2000, 30000)]
+    def cost(X_eff):
+        x_eff = X_eff[0]
+        y_eff = X_eff[1]
+        z_eff = X_eff[2]
+        pred = model(x_ants.T, x_eff, y_eff, z_eff)
+        delta = delta_ctants - pred
+        delta = delta[1:]
+        return np.einsum("i,j,ij", delta, delta, inv_cov)
+
+    res = differential_evolution(cost, bounds, x0=initial_guess, maxiter=ncall)
+
+    return res.x, res.fun, nants-3, res.success
+
+
+
+
+def cost_swf2_scipy(X, xants, tants):
+    x_eff, y_eff, z_eff = X
+    x_ants = xants
+    t_ants = tants
+#    x_ants, t_ants = args
+    delta_ctants = phys_params.c_light*( t_ants - t_ants[0])
+
+    x = x_ants[:, 0]
+    y = x_ants[:, 1]
+    z = x_ants[:, 2]
+
+
+    delta_ct_model = SWF_model_xyz_v2(x_ants, x_eff, y_eff, z_eff)
+    loss = np.sum((delta_ctants - delta_ct_model)**2)
+    return loss
+
+
+
+# def get_SWF_fit_v3(x_ants, t_ants, initial_guess, sigma_t=5e-9, ncall=100):
+#     x = x_ants[:, 0]
+#     y = x_ants[:, 1]
+#     z = x_ants[:, 2]
+    
+#     nants = len(t_ants)
+#     delta_ctants = []
+#     for i in range(nants):
+#         for j in range(i+1, nants):
+#             delta_ctants.append(phys_params.c_light*( t_ants[i] - t_ants[j]))
+#     delta_ctants = np.array(delta_ctants)
+#     print(delta_ctants.shape)
+
+#     leastsquares = cost.LeastSquares((x, y, z), delta_ctants, delta_ctants*0 + phys_params.c_light*sigma_t * np.sqrt(2), SWF_model_xyz_v3, verbose=0)
+#     leastsquares._ndim = 3
+#     x0 = initial_guess[0]
+#     y0 = initial_guess[1]
+#     z0 = initial_guess[2]
+
+#     m = Minuit(leastsquares, x_eff=x0, y_eff=y0, z_eff=z0)
+#     m.limits = [(-500000, 500000), (-500000, 500000), (0, 30000)]
+#     m.migrad(ncall=ncall)
+#     return np.array(m.values), m.valid
